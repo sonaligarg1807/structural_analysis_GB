@@ -158,5 +158,61 @@ def build_parser() -> argparse.ArgumentParser:
         help="Do not write final summary file",
     )
     p.set_defaults(write_final_summary=True)
+    
+        # ---- Latvecs (lattice vector) analysis ----
+    p.add_argument(
+        "--latvecs",
+        dest="do_latvecs",
+        action="store_true",
+        help=(
+            "Run lattice-vector analysis (latvecs) for each grain *_g1/_g2.gro "
+            "written in Step 3. Creates <stem>_output.txt next to each grain .gro."
+        ),
+    )
+    p.set_defaults(do_latvecs=False)
+
+    p.add_argument(
+        "--latvecs-lam",
+        type=float,
+        default=4.0,
+        help="λ parameter for feature weighting in latvec clustering (default: 4.0)",
+    )
+    p.add_argument(
+        "--latvecs-eps",
+        type=float,
+        default=0.6,
+        help="DBSCAN eps for latvec clustering (default: 0.6)",
+    )
+    p.add_argument(
+        "--latvecs-min-samples",
+        type=int,
+        default=5,
+        help="DBSCAN min_samples for latvec clustering (default: 5)",
+    )
+    p.add_argument(
+        "--latvecs-top-k",
+        type=int,
+        default=5,
+        help="Number of shortest-distance clusters inspected in latvec analysis (default: 5)",
+    )
+    p.add_argument(
+        "--latvecs-visualize",
+        action="store_true",
+        help="Visualize COMs with py3Dmol during latvec analysis (if installed).",
+    )
+        # ---- Contact-plane analysis (requires latvecs outputs) ----
+    p.add_argument(
+        "--contactplanes",
+        dest="do_contactplanes",
+        action="store_true",
+        help=(
+            "Run contact-plane analysis for each group using grain COMs and "
+            "ff/ef vectors from latvecs outputs (<stem>_output.txt)."
+        ),
+    )
+    p.set_defaults(do_contactplanes=False)
 
     return p
+
+    return p
+

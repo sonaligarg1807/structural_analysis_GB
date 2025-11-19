@@ -1,0 +1,6 @@
+slab_rank	slab_dir	slab_stem	GB_AXIS	y_center_A	dist_to_box_center_A	GB_N	G1_N	G2_N	contact_plane
+1	gb_slab_rank01_N8176_th80A	gb_slab_rank01_N8176_th80A	y	67.57	14.26	107	72	157	g1=ac,g2=ac
+4	gb_slab_rank04_N47_th80A	gb_slab_rank04_N47_th80A	y	122.38	40.55	66	75	64	g1=ac,g2=ac
+7	gb_slab_rank07_N14_th80A	gb_slab_rank07_N14_th80A	y	79.4	2.43	175	71	145	g1=ac,g2=ac
+8	gb_slab_rank08_N9_th80A	gb_slab_rank08_N9_th80A	y	66.24	15.59	61	70	48	g1=ac,g2=ac
+11	gb_slab_rank11_N7_th80A	gb_slab_rank11_N7_th80A	y	142.46	60.63	116	70	16	g1=ac,g2=ac

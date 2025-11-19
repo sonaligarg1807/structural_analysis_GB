@@ -6,21 +6,31 @@ Steps:
   1) Step-1: extract slabs + metadata
   2) Step-2: topological grain/GB classification (writes resid TXT)
   3) Step-3: layer selection (single- or multi-layer) and (optionally) write *_g1/_g2/_gb.gro per segment/group
+  4) (optional) Per-grain lattice-vector analysis + contact-plane labels for groups that have *_g1/_g2.gro
 
-NOTE: Contact-plane analysis (Step-4) is *not* included here; you said you have separate code for that.
+User typically runs:
+  python -m src.main \\
+      --in-gro b45.gro \\
+      --out-dir b45_gb_workflow_out \\
+      --resname PEN \\
+      --step3-mode multi \\
+      --do-latvecs --do-contactplanes
 """
 
 import os
 import re
 from pathlib import Path
 
-from structural_analysis_GB.parser import build_parser
-from structural_analysis_GB.step1 import step1_extract_all_slabs
-from structural_analysis_GB.step2 import step2_clustering_for_slab
-from structural_analysis_GB.step3 import (
+from src.parser import build_parser
+from src.slab_extr import step1_extract_all_slabs
+from src.grain_gb_segmentation import step2_clustering_for_slab
+from src.GB_type_segm import (
     step3_single_layer_for_slab,
     step3_merge_layers_for_slab,
 )
+
+from src.latvecs import analyze_grain_latvecs
+from src.contactplanes import contactplanes_for_group
 
 
 def run(args=None):
@@ -29,7 +39,7 @@ def run(args=None):
 
     os.makedirs(args.out_dir, exist_ok=True)
 
-    # ---------- Step 1 ----------
+    # ---------- Step 1: extract all slabs from the input .gro ----------
     slabs = step1_extract_all_slabs(
         in_gro=args.in_gro,
         resname=args.resname,
@@ -45,7 +55,7 @@ def run(args=None):
         write_summary=args.write_step1_summary,
     )
 
-    # ---------- Step 2 + Step 3 ----------
+    # ---------- Step 2 + Step 3 over all slabs ----------
     final_rows = []
     for slab in slabs:
         slab_dir = Path(slab).parent
@@ -64,7 +74,7 @@ def run(args=None):
             min_gb_size=args.min_gb_size,
         )
 
-        # Step-3 mode selection
+        # --- Step-3 mode selection ---
         mode = args.step3_mode.strip().lower()
         if mode not in ("single", "multi", "ask"):
             print(f"[warn] STEP3_MODE='{args.step3_mode}' not recognized. Using 'ask'.")
@@ -86,6 +96,7 @@ def run(args=None):
         else:
             mode_eff = mode
 
+        # --- Step-3 proper ---
         if mode_eff == "multi":
             rows = step3_merge_layers_for_slab(
                 slab_gro=slab,
@@ -129,7 +140,9 @@ def run(args=None):
                 write_gro=args.write_step3_gro,
                 min_count_write=args.min_count_to_write,
                 min_gb_to_write=args.min_gb_to_write,
-                target_per_side=args.target_per_side if args.target_per_side > 0 else None,
+                target_per_side=(
+                    args.target_per_side if args.target_per_side > 0 else None
+                ),
             )
 
         # add slab rank from stem if present
@@ -138,8 +151,67 @@ def run(args=None):
             r["slab_rank"] = int(m.group(1)) if m else -1
         final_rows.extend(rows)
 
-    # ---------- Final summary (up to Step 3) ----------
-    # contact_plane stays 'NA' here; your separate Step-4 code can modify this later.
+    # ---------- Optional Step-4: latvecs + contact-planes per group ----------
+    # we do this BEFORE writing the final summary, so contact_plane is up-to-date
+    if args.do_latvecs or args.do_contactplanes:
+        print("[step4] Scanning groups with *_g1/_g2.gro for latvec/contact-plane analysis...")
+
+        for r in final_rows:
+            paths = r.get("paths")
+            if not paths:
+                continue
+
+            g1_path = paths.get("g1")
+            g2_path = paths.get("g2")
+            if not (g1_path and g2_path):
+                continue
+
+            # --- 4a) Lattice-vector analysis (per grain) ---
+            if args.do_latvecs:
+                # Grain 1
+                try:
+                    analyze_grain_latvecs(
+                        g1_path,
+                        output_txt=None,  # default: <stem>_output.txt in same dir
+                        visualize=args.latvecs_visualize,
+                        lam=args.latvecs_lam,
+                        eps=args.latvecs_eps,
+                        min_samples=args.latvecs_min_samples,
+                        top_k=args.latvecs_top_k,
+                    )
+                except Exception as e:
+                    print(f"[latvecs] Warning: failed for {g1_path}: {e}")
+
+                # Grain 2
+                try:
+                    analyze_grain_latvecs(
+                        g2_path,
+                        output_txt=None,
+                        visualize=args.latvecs_visualize,
+                        lam=args.latvecs_lam,
+                        eps=args.latvecs_eps,
+                        min_samples=args.latvecs_min_samples,
+                        top_k=args.latvecs_top_k,
+                    )
+                except Exception as e:
+                    print(f"[latvecs] Warning: failed for {g2_path}: {e}")
+
+            # --- 4b) Contact-plane analysis (needs latvec outputs on disk) ---
+            if args.do_contactplanes:
+                try:
+                    cp1, cp2 = contactplanes_for_group(
+                        g1_gro_file=g1_path,
+                        g2_gro_file=g2_path,
+                        g1_txt=None,  # use <stem>_output.txt by default
+                        g2_txt=None,
+                    )
+                    if cp1 is not None and cp2 is not None:
+                        # Store combined info in the single contact_plane column
+                        r["contact_plane"] = f"g1={cp1},g2={cp2}"
+                except Exception as e:
+                    print(f"[contactplanes] Warning: failed for {g1_path}, {g2_path}: {e}")
+
+    # ---------- Final summary (after Step 4 so contact_plane is updated) ----------
     final_rows.sort(key=lambda d: (d["dist_to_box_center_A"], d["slab_rank"]))
 
     if args.write_final_summary:
@@ -166,11 +238,9 @@ def run(args=None):
                     f"{r['y_center_A']:.2f}\t{r['dist_to_box_center_A']:.2f}\t"
                     f"{r['GB_N']}\t{r['G1_N']}\t{r['G2_N']}\t{r['contact_plane']}\n"
                 )
-        print(f"[done] Final summary (Step 1–3) → {final_path}")
+        print(f"[done] Final summary (Step 1–4) → {final_path}")
     else:
         print("[done] Final summary not written (disabled).")
-
-    print("Note: contact_plane column is 'NA' here; use your separate Step-4 code to fill it.")
 
 
 if __name__ == "__main__":
