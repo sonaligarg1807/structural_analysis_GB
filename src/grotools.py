@@ -1,93 +1,151 @@
-"""Module for parsing GRO files and extracting residue information."""
+"""Utilities for parsing GRO files and representing atoms/residues."""
+
+from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Iterable, List
+
 import numpy as np
 
 
+# --- low-level field extractors -------------------------------------------------
+
+
 def gro_resid(line: str) -> int:
-    """Extract residue ID from a GRO file line."""
+    """Extract residue ID from a GRO atom line."""
     return int(line[0:5].strip())
 
 
 def gro_resname(line: str) -> str:
-    """Extract residue name from a GRO file line."""
+    """Extract residue name from a GRO atom line."""
     return line[5:10].strip()
 
 
 def gro_atomname(line: str) -> str:
-    """Extract atom name from a GRO file line."""
+    """Extract atom name from a GRO atom line."""
     return line[10:15].strip()
 
 
 def gro_atomnr(line: str) -> int:
-    """Extract atom number from a GRO file line."""
+    """Extract atom number from a GRO atom line."""
     return int(line[15:20].strip())
 
 
 def gro_atom_pos(line: str) -> np.ndarray:
-    """Extract atom position from a GRO file line."""
+    """Extract atom position (x, y, z) from a GRO atom line."""
     x = float(line[20:28].strip())
     y = float(line[28:36].strip())
     z = float(line[36:44].strip())
-    return np.array([x, y, z])
+    return np.array([x, y, z], dtype=np.float32)
 
 
-@dataclass
+# --- data structures ------------------------------------------------------------
+
+
+@dataclass(slots=True)
 class Atom:
-    """Data class to hold atom information from a GRO file line."""
+    """Atom information parsed from a GRO atom line."""
 
     resid: int
     resname: str
     atomname: str
     atomnr: int
-    position: np.ndarray
+    position: np.ndarray  # shape (3,)
 
 
-@dataclass
+@dataclass(slots=True)
 class Residue:
-    """Data class to hold residue information."""
+    """Residue = group of atoms sharing the same resid."""
 
     resid: int
     resname: str
-    atoms: list[Atom]
+    atoms: List[Atom]
 
 
-def make_atom(gro_line: str) -> Atom:
-    """Parse a line from a GRO file and return its components."""
-    atom = Atom(
+# --- constructors ---------------------------------------------------------------
+
+
+def parse_atom_line(gro_line: str) -> Atom:
+    """Parse a single GRO atom line into an Atom object."""
+    return Atom(
         resid=gro_resid(gro_line),
         resname=gro_resname(gro_line),
         atomname=gro_atomname(gro_line),
         atomnr=gro_atomnr(gro_line),
         position=gro_atom_pos(gro_line),
     )
-    return atom
 
 
-def make_residue(atoms: list[Atom], resid: int) -> Residue:
-    """Create a Residue object from a list of Atom objects with the same resid."""
+def make_residue(atoms: List[Atom], resid: int) -> Residue:
+    """
+    Create a Residue object from a list of Atom objects with the same resid.
+
+    NOTE: For most workflows you'll just call `split_gro2residues` instead.
+    """
     res_atoms = [atom for atom in atoms if atom.resid == resid]
     if not res_atoms:
         raise ValueError(f"No atoms found for residue ID {resid}")
     resname = res_atoms[0].resname
-    residue = Residue(resid=resid, resname=resname, atoms=res_atoms)
-    return residue
+    return Residue(resid=resid, resname=resname, atoms=res_atoms)
 
 
-def split_gro2residues(atom_lines: list[str]) -> list[Residue]:
-    """Create a Residue object from a list of Atom objects."""
-    atoms = [make_atom(line) for line in atom_lines]
-    resids = set(atom.resid for atom in atoms)
-    residues = [make_residue(atoms, resid) for resid in resids]
+def split_gro2residues(atom_lines: Iterable[str]) -> List[Residue]:
+    """
+    Split GRO atom lines into Residue objects.
+
+    Assumes that atoms are ordered by residue ID (standard for GROMACS .gro
+    where each residue is contiguous). This makes the grouping O(N) instead of
+    O(N^2).
+
+    Parameters
+    ----------
+    atom_lines
+        Lines containing only atom records, i.e. `gro[2:-1]`.
+
+    Returns
+    -------
+    list[Residue]
+    """
+    residues: List[Residue] = []
+    current_resid: int | None = None
+    current_atoms: List[Atom] = []
+
+    for line in atom_lines:
+        line = line.rstrip("\n")
+        if not line:
+            continue
+
+        atom = parse_atom_line(line)
+
+        if current_resid is None:
+            # first atom
+            current_resid = atom.resid
+            current_atoms = [atom]
+            continue
+
+        if atom.resid != current_resid:
+            # flush previous residue
+            residues.append(
+                Residue(
+                    resid=current_resid,
+                    resname=current_atoms[0].resname,
+                    atoms=current_atoms,
+                )
+            )
+            # start new residue
+            current_resid = atom.resid
+            current_atoms = [atom]
+        else:
+            current_atoms.append(atom)
+
+    # flush last residue
+    if current_resid is not None and current_atoms:
+        residues.append(
+            Residue(
+                resid=current_resid,
+                resname=current_atoms[0].resname,
+                atoms=current_atoms,
+            )
+        )
+
     return residues
-
-
-# def split_gro2resides(
-#     atom_lines: list[str],
-# ) -> list[Residue]:
-#     """Split GRO atom lines into residues."""
-#     residues = []
-#     for res_id, group in it.groupby(atom_lines, key=gro_resid):
-#         atom = [parse_gro_line(line) for line in group]
-#         residues.append(atom)
-#     return residues

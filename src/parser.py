@@ -5,7 +5,7 @@ import argparse
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="structural_analysis_GB",
-        description="GB multi-slab workflow (Steps 1–3: slab extraction, grain/GB classification, layer selection).",
+        description="GB multi-slab workflow (Steps 1–3: slab extraction, grain/GB classification, GB Type layer selection).",
     )
 
     # ---- General I/O ----
@@ -13,19 +13,19 @@ def build_parser() -> argparse.ArgumentParser:
         "-i",
         "--input-gro",
         dest="in_gro",
-        default="/data/sgarg/pentacene/gb_pen_schellhammer/final_working_str/INITIAL_str/1_FINAL_EQ/b90.gro",
+        default=None,
         help="Input full-system .gro file",
     )
     p.add_argument(
         "--resname",
         default="en-",
-        help="Residue name of molecules to analyze (default: en-)",
+        help="Residue name of molecules to analyze",
     )
     p.add_argument(
         "-o",
         "--out-dir",
         dest="out_dir",
-        default="b90_single_results_workflow",
+        default="results",
         help="Output directory for all slabs and results",
     )
     p.add_argument(
@@ -72,8 +72,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--out-prefix-per-slab",
         dest="out_prefix_per_slab",
-        default="ograin",
-        help="Prefix for Step 2 resid TXT files",
+        default="resids",
+        help="Prefix for Step 2 resid .txt files",
     )
 
     # ---- Step 3 config ----
@@ -143,7 +143,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_false",
         help="Do not write *_g1/_g2/_gb.txt from Step 3",
     )
-    p.set_defaults(write_step3_gro=True, write_step3_txt=True)
+    p.set_defaults(write_step3_gro=True, write_step3_txt=False)
 
     p.add_argument(
         "--final-summary-name",
@@ -212,7 +212,58 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.set_defaults(do_contactplanes=False)
 
-    return p
+    # ---- Optional misorientation analysis (depends on contactplanes + latvecs) ----
+    p.add_argument(
+        "--misori",
+        dest="do_misori",
+        action="store_true",
+        help=(
+            "Also compute misorientation (Θ, twist, tilt) via orix for groups "
+            "where contact-plane analysis succeeds."
+        ),
+    )
+    p.set_defaults(do_misori=False)
+
+    p.add_argument(
+        "--misori_symmetry",
+        default="triclinic",
+        help=(
+            "Crystal symmetry for misorientation (e.g. 'triclinic', '2/m', 'mmm'). "
+            "Default: 'triclinic'."
+        ),
+    )
+        # ---- Optional filtering of final summary by contact_plane pattern ----
+    p.add_argument(
+        "--filter-planes",
+        dest="do_filter_planes",
+        action="store_true",
+        help=(
+            "After writing FINAL summary, also write a filtered 'best-per-rank' "
+            "file selecting one group per slab_rank that matches a given "
+            "contact_plane pattern (e.g. 'ac-ac')."
+        ),
+    )
+    p.set_defaults(do_filter_planes=False)
+
+    p.add_argument(
+        "--filter_plane_pair",
+        default="ac-ac",
+        help=(
+            "Desired contact_plane pattern as 'g1plane-g2plane', "
+            "e.g. 'ac-ac', 'ab-ac', 'ac-*'. "
+            "Default: 'ac-ac'."
+        ),
+    )
+
+    p.add_argument(
+        "--filter_out_name",
+        default="FILTERED_best_per_rank.txt",
+        help=(
+            "Name of the filtered summary TSV to write in out_dir "
+            "(default: FILTERED_best_per_rank.txt)."
+        ),
+    )
 
     return p
+
 

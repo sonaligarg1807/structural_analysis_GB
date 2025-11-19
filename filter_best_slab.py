@@ -142,7 +142,7 @@ def main():
     # Normalize/validate essential fields
     needed = {
         "slab_rank", "slab_dir", "slab_stem", "GB_AXIS", "y_center_A",
-        "dist_to_box_center_A", "GB_N", "G1_N", "G2_N", "contact_plane"
+        "dist_to_box_center_A", "GB_N", "G1_N", "G2_N", "contact_plane", "misori_deg"
     }
     missing = needed - set(rows[0].keys())
     if missing:
@@ -181,7 +181,7 @@ def main():
     # Write filtered TSV
     out_cols = [
         "slab_rank", "slab_dir", "slab_stem", "GB_AXIS",
-        "y_center_A", "dist_to_box_center_A", "GB_N", "G1_N", "G2_N", "contact_plane"
+        "y_center_A", "dist_to_box_center_A", "GB_N", "G1_N", "G2_N", "contact_plane", "misori_deg"
     ]
     with open(args.out, "w", newline="") as f:
         w = csv.DictWriter(f, delimiter="\t", fieldnames=out_cols)

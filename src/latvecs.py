@@ -20,9 +20,9 @@ import pandas as pd
 from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import DBSCAN
 
-from .site import Site
-from .iofile import read_gro
-from .grotools import split_gro2residues
+from src.site import Site
+from src.iofile import read_gro
+from src.grotools import split_gro2residues
 
 try:
     import py3Dmol as p3d

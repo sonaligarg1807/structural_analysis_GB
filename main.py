@@ -28,9 +28,10 @@ from src.GB_type_segm import (
     step3_single_layer_for_slab,
     step3_merge_layers_for_slab,
 )
-
 from src.latvecs import analyze_grain_latvecs
 from src.contactplanes import contactplanes_for_group
+from src.misorientation_angle import misorientation_for_group
+from src.filter_planes import filter_best_per_rank
 
 
 def run(args=None):
@@ -154,7 +155,9 @@ def run(args=None):
     # ---------- Optional Step-4: latvecs + contact-planes per group ----------
     # we do this BEFORE writing the final summary, so contact_plane is up-to-date
     if args.do_latvecs or args.do_contactplanes:
-        print("[step4] Scanning groups with *_g1/_g2.gro for latvec/contact-plane analysis...")
+        print(
+            "[step4] Scanning groups with *_g1/_g2.gro for latvec/contact-plane analysis..."
+        )
 
         for r in final_rows:
             paths = r.get("paths")
@@ -208,8 +211,37 @@ def run(args=None):
                     if cp1 is not None and cp2 is not None:
                         # Store combined info in the single contact_plane column
                         r["contact_plane"] = f"g1={cp1},g2={cp2}"
+
+                        # --- Optional misorientation (only if contact-planes succeeded) ---
+                        if args.do_misori:
+                            try:
+                                miso = misorientation_for_group(
+                                    g1_gro_file=g1_path,
+                                    g2_gro_file=g2_path,
+                                    g1_txt=None,  # use <stem>_output.txt by default
+                                    g2_txt=None,
+                                    symmetry_name=args.misori_symmetry,
+                                )
+                                r["misori_deg"] = miso["theta_deg"]
+                                r["twist_deg"] = miso["twist_deg"]
+                                r["tilt_deg"] = miso["tilt_deg"]
+                            except Exception as e_m:
+                                print(
+                                    f"[misori] Warning: failed for {g1_path}, {g2_path}: {e_m}"
+                                )
+                    else:
+                        # no valid contact plane → no misorientation
+                        r.setdefault("misori_deg", None)
+                        r.setdefault("twist_deg", None)
+                        r.setdefault("tilt_deg", None)
+
                 except Exception as e:
-                    print(f"[contactplanes] Warning: failed for {g1_path}, {g2_path}: {e}")
+                    print(
+                        f"[contactplanes] Warning: failed for {g1_path}, {g2_path}: {e}"
+                    )
+                    r.setdefault("misori_deg", None)
+                    r.setdefault("twist_deg", None)
+                    r.setdefault("tilt_deg", None)
 
     # ---------- Final summary (after Step 4 so contact_plane is updated) ----------
     final_rows.sort(key=lambda d: (d["dist_to_box_center_A"], d["slab_rank"]))
@@ -228,20 +260,55 @@ def run(args=None):
                 "G1_N",
                 "G2_N",
                 "contact_plane",
+                "misori_deg",
+                "twist_deg",
+                "tilt_deg",
             ]
         )
+
+        def _fmt_float_or_na(x):
+            if x is None:
+                return "NA"
+            try:
+                return f"{float(x):.2f}"
+            except Exception:
+                return "NA"
+
         with open(final_path, "w") as f:
             f.write(header + "\n")
             for r in final_rows:
+                misori = r.get("misori_deg", None)
+                twist = r.get("twist_deg", None)
+                tilt = r.get("tilt_deg", None)
+
                 f.write(
-                    f"{r['slab_rank']}\t{r['slab_dir']}\t{r['slab_stem']}\t{r['gb_axis']}\t"
-                    f"{r['y_center_A']:.2f}\t{r['dist_to_box_center_A']:.2f}\t"
-                    f"{r['GB_N']}\t{r['G1_N']}\t{r['G2_N']}\t{r['contact_plane']}\n"
+                    f"{r['slab_rank']}\t"
+                    f"{r['slab_dir']}\t"
+                    f"{r['slab_stem']}\t"
+                    f"{r['gb_axis']}\t"
+                    f"{r['y_center_A']:.2f}\t"
+                    f"{r['dist_to_box_center_A']:.2f}\t"
+                    f"{r['GB_N']}\t"
+                    f"{r['G1_N']}\t"
+                    f"{r['G2_N']}\t"
+                    f"{r['contact_plane']}\t"
+                    f"{_fmt_float_or_na(misori)}\t"
+                    f"{_fmt_float_or_na(twist)}\t"
+                    f"{_fmt_float_or_na(tilt)}\n"
                 )
+
         print(f"[done] Final summary (Step 1–4) → {final_path}")
+
+        # ---- Optional filtering step (best-per-rank by contact_plane pattern) ----
+        if getattr(args, "do_filter_planes", False):
+            filtered_path = Path(args.out_dir) / args.filter_out_name
+            filter_best_per_rank(
+                summary_path=final_path,
+                out_path=filtered_path,
+                plane_pair=args.filter_plane_pair,
+            )
     else:
         print("[done] Final summary not written (disabled).")
-
 
 if __name__ == "__main__":
     run()
