@@ -170,7 +170,7 @@ Extracts molecules from the middle layer perpendicular to the GB axis.
 **Use when**: You want a thin, representative slice through the grain boundary.
 
 **Key Parameters**:
-- `--gb-axis`: Axis perpendicular to GB plane (x, y, or z; default: y)
+- `--gb-axis`: Axis perpendicular to GB plane (x, y, or z; default: y). This is the axis along which layers are selected.
 - `--slab-thick`: Thickness of selection window (default: 40.0 Å)
 - `--min-gb-to-write`: Minimum GB count to output files (default: 40)
 - `--target-per-side`: Cap molecules per grain (default: 300, 0 to disable)
@@ -182,7 +182,7 @@ Extracts and merges molecules from three layers (top, middle, bottom).
 
 **Key Parameters**:
 - `--merge-tol-y`: Tolerance for merging groups across layers (default: 5.0 Å)
-- `--min-count-to-write`: Minimum count to write output (default: 40)
+- `--min-count-to-write`: Minimum molecule count per region (GB, G1, or G2) to write output files (default: 40)
 
 #### Interactive Mode (`--step3-mode ask`)
 Prompts for mode selection for each slab during execution.
@@ -246,8 +246,13 @@ Prompts for mode selection for each slab during execution.
 4. Accounts for crystal symmetry
 
 **Key Parameters**:
-- `--misori_symmetry`: Crystal symmetry (default: "triclinic")
-  - Options: "triclinic", "2/m", "mmm", etc.
+- `--misori_symmetry`: Crystal symmetry for misorientation calculations (default: "triclinic")
+  - Common options: 
+    - "triclinic" or "-1": Triclinic with inversion center (for pentacene, general organic crystals)
+    - "2/m": Monoclinic with 2-fold rotation and mirror
+    - "mmm": Orthorhombic with three perpendicular mirror planes
+  - The symmetry affects how equivalent crystallographic orientations are identified
+  - Use the symmetry that matches your crystal system for accurate misorientation calculations
 
 **Outputs**:
 - `misori_deg`, `twist_deg`, `tilt_deg` columns in `FINAL_gb_summary.txt`
@@ -408,7 +413,7 @@ When prompted, enter 'm' for multi-layer or 's' for single-layer for each slab.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `--gb-axis` | choice | "y" | GB orientation axis: x, y, or z |
+| `--gb-axis` | choice | "y" | Axis perpendicular to the GB plane: x, y, or z |
 | `--a-len` | float | 6.2753 | Unit cell length a (Å) |
 | `--b-len` | float | 7.7138 | Unit cell length b (Å) |
 | `--c-len` | float | 14.4424 | Unit cell length c (Å) |
