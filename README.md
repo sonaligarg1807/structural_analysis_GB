@@ -182,7 +182,7 @@ Extracts and merges molecules from three layers (top, middle, bottom).
 
 **Key Parameters**:
 - `--merge-tol-y`: Tolerance for merging groups across layers (default: 5.0 Å)
-- `--min-count-to-write`: Minimum molecule count per region (GB, G1, or G2) to write output files (default: 40)
+- `--min-count-to-write`: Minimum molecule count per region (GB, G1, or G2) required to write output files (default: 40)
 
 #### Interactive Mode (`--step3-mode ask`)
 Prompts for mode selection for each slab during execution.
