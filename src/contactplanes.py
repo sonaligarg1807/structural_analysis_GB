@@ -125,7 +125,7 @@ def default_latvec_output_path(gro_path):
     This matches analyze_grain_latvecs() behaviour.
     """
     p = Path(gro_path)
-    return p.with_name(f"{p.stem}_output.txt")
+    return p.with_name(f"{p.stem}_latvecs.txt")
 
 
 def contactplanes_for_group(g1_gro_file, g2_gro_file, g1_txt=None, g2_txt=None):

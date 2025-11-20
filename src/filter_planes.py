@@ -283,7 +283,7 @@ def filter_best_per_rank(
         closest = min(best_rows, key=lambda r: r["dist_to_box_center_A"])
         print(
             "[filter_planes] Closest to box center: "
-            f"rank {closest['slab_rank']} "
+            f"slab {closest['slab_rank']} "
             f"({closest['slab_dir']}, {closest['slab_stem']}) "
             f"Δ={closest['dist_to_box_center_A']:.2f} Å | "
             f"G1={closest['G1_N']} G2={closest['G2_N']} GB={closest['GB_N']} | "

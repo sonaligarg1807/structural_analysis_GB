@@ -321,7 +321,7 @@ def analyze_grain_latvecs(
 
     # Default output file: <stem>_output.txt in same directory
     if output_txt is None:
-        output_txt = gro_path.with_name(f"{gro_path.stem}_output.txt")
+        output_txt = gro_path.with_name(f"{gro_path.stem}_latvecs.txt")
     else:
         output_txt = Path(output_txt)
 

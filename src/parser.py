@@ -257,7 +257,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p.add_argument(
         "--filter_out_name",
-        default="FILTERED_best_per_rank.txt",
+        default="ac-ac_best.txt",
         help=(
             "Name of the filtered summary TSV to write in out_dir "
             "(default: FILTERED_best_per_rank.txt)."
