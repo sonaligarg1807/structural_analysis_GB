@@ -1,2 +1,0 @@
-slab_rank	slab_dir	slab_stem	GB_AXIS	y_center_A	dist_to_box_center_A	GB_N	G1_N	G2_N	contact_plane	misori_deg
--1	slab_07	slab_07	y	79.4	2.43	175	71	145	g1=ac,g2=ac	50.32

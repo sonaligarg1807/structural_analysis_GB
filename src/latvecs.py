@@ -2,38 +2,41 @@
 """
 Lattice-vector extraction from a single grain .gro file (from Step 3).
 
-Logic follows Sonali's original notebook/script:
-  1) Read .gro, build Site objects
-  2) Compute all pairwise COM distances + orientation types (ff/ef/unknown)
-  3) Feature engineering and DBSCAN clustering
-  4) For each cluster: mean distance, mean axis (with sign fix), majority type
-  5) Among the 5 shortest-distance clusters, pick the shortest ff and shortest ef
-  6) Save these as lattice vectors to an output .txt file
-
-You typically call `analyze_grain_latvecs` on each *_g1.gro / *_g2.gro from Step 3.
+This is a reorganized (import-safe) version of the original module:
+- preserves the exact computational logic and output format
+- adds light documentation, type hints and structured logging
+- keeps the same filenames and output behavior so it remains compatible
+  with the rest of the workflow.
 """
+from __future__ import annotations
 
+import logging
 from pathlib import Path
+from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
-from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import DBSCAN
+from sklearn.preprocessing import StandardScaler
 
-from src.site import Site
-from src.iofile import read_gro
 from src.grotools import split_gro2residues
+from src.iofile import read_gro
+from src.site import Site
 
 try:
-    import py3Dmol as p3d
-except ImportError:
-    p3d = None
+    import py3Dmol as p3d  # optional visualization
+except Exception:
+    p3d = None  # type: ignore
+
+logger = logging.getLogger(__name__)
+
+__all__ = ["analyze_grain_latvecs", "_pairwise_df", "_cluster_and_extract_vectors"]
 
 
 # =========================
 # STEP 4: Feature engineering for clustering
 # =========================
-def v_quadratic_features(V):
+def v_quadratic_features(V: np.ndarray) -> np.ndarray:
     vx, vy, vz = V[:, 0], V[:, 1], V[:, 2]
     return np.column_stack(
         [
@@ -48,15 +51,20 @@ def v_quadratic_features(V):
 
 
 def build_features(
-    distances,
-    vectors,
-    cos_orient,
-    lam,
-    use_invariant=True,
-    alpha=1.0,
-    beta=0.5,
-    zscore=True,
-):
+    distances: Sequence[float],
+    vectors: Sequence[Sequence[float]],
+    cos_orient: Sequence[float],
+    lam: float,
+    use_invariant: bool = True,
+    alpha: float = 1.0,
+    beta: float = 0.5,
+    zscore: bool = True,
+) -> np.ndarray:
+    """
+    Build features used for DBSCAN clustering of pairwise site vectors.
+
+    Same logic as the original code (no algorithmic changes).
+    """
     D = np.asarray(distances).astype(float)
     V = np.asarray(vectors).astype(float)
     C = np.asarray(cos_orient).astype(float)
@@ -75,12 +83,12 @@ def build_features(
     return X
 
 
-def cluster_DBSCAN(X, eps=0.6, min_samples=10):
+def cluster_DBSCAN(X: np.ndarray, eps: float = 0.6, min_samples: int = 10) -> np.ndarray:
     db = DBSCAN(eps=eps, min_samples=min_samples).fit(X)
     return db.labels_
 
 
-def _build_sites_from_gro(gro_path):
+def _build_sites_from_gro(gro_path: Path) -> Tuple[List[Site], np.ndarray]:
     """Read .gro and build Site objects + COM array."""
     gro = read_gro(str(gro_path))
     atom_line = gro[2:-1]
@@ -90,10 +98,10 @@ def _build_sites_from_gro(gro_path):
     return sites, coms
 
 
-def _visualize_coms_py3Dmol(sites, width=400, height=400):
+def _visualize_coms_py3Dmol(sites: List[Site], width: int = 400, height: int = 400):
     """Optional py3Dmol visualization of COMs."""
     if p3d is None:
-        print("[latvecs] py3Dmol not installed; skipping visualization.")
+        logger.debug("[latvecs] py3Dmol not installed; skipping visualization.")
         return None
 
     view = p3d.view(width=width, height=height)
@@ -111,8 +119,12 @@ def _visualize_coms_py3Dmol(sites, width=400, height=400):
     return view
 
 
-def _pairwise_df(sites):
-    """Original STEP 3: compute pairwise distances + PCA alignment and type."""
+def _pairwise_df(sites: List[Site]) -> pd.DataFrame:
+    """
+    Compute pairwise distances, vectors and orientation type between all site pairs.
+
+    IDENTICAL classification logic to original implementation.
+    """
     df = pd.DataFrame(columns=["res_id1", "res_id2", "distance", "vector", "type"])
     resids = [site.resid for site in sites]
 
@@ -152,17 +164,23 @@ def _pairwise_df(sites):
             )
             df = pd.concat([df, new_row], ignore_index=True)
 
-    print("len dist_vectors:", len(df))
+    logger.debug("len dist_vectors: %d", len(df))
     return df
 
 
-def _cluster_and_extract_vectors(df, lam=4.0, eps=0.6, min_samples=5, top_k=5):
+def _cluster_and_extract_vectors(
+    df: pd.DataFrame,
+    lam: float = 4.0,
+    eps: float = 0.6,
+    min_samples: int = 5,
+    top_k: int = 5,
+):
     """
-    Original STEP 5 + STEP 6 logic:
-      - build features
-      - DBSCAN
-      - per-cluster mean distance, axis, type
-      - from the top_k shortest clusters, pick shortest ff and shortest ef
+    Cluster pairwise vectors and extract representative lattice-vector directions.
+
+    Returns (selected_list, cluster_info) exactly as original:
+      - selected_list: list of (cluster_idx, type, distance, vector)
+      - cluster_info: dict mapping cluster_id -> {"vector","Distance","Type"}
     """
     # STEP 5: Cluster analysis with orientation fix
     dist_values = df["distance"].tolist()
@@ -180,7 +198,7 @@ def _cluster_and_extract_vectors(df, lam=4.0, eps=0.6, min_samples=5, top_k=5):
         zscore=True,
     )
     labels = cluster_DBSCAN(X, eps=eps, min_samples=min_samples)
-    print("Cluster labels:", labels)
+    logger.debug("Cluster labels: %s", labels)
 
     cluster_info = {}
     unique_labels = np.unique(labels)
@@ -210,33 +228,29 @@ def _cluster_and_extract_vectors(df, lam=4.0, eps=0.6, min_samples=5, top_k=5):
         mean_axis = e[:, np.argmax(w)]
         cluster_info[k]["vector"] = mean_axis / np.linalg.norm(mean_axis)
 
-        # Type assignment
+        # Type assignment (keep original majority-vote logic)
         unique, counts = np.unique(Cos_orient, return_counts=True)
         majority_type = unique[np.argmax(counts)]
         cluster_info[k]["Type"] = "ff" if majority_type == 1 else "ef"
 
-    # STEP 6: Select clusters and visualize
+    # STEP 6: Select clusters and return results (same selection logic)
     if not cluster_info:
-        print("[latvecs] No non-noise clusters found.")
+        logger.info("[latvecs] No non-noise clusters found.")
         return [], cluster_info
 
     cluster_dists = np.array([info["Distance"] for info in cluster_info.values()])
-    # mapping index in this array -> cluster key order
     cluster_keys = list(cluster_info.keys())
-    # indices of top_k shortest distances
     k_eff = min(top_k, len(cluster_dists))
     shortest_dists_idx = np.argpartition(cluster_dists, k_eff - 1)[:k_eff]
     shortest_clusters = [cluster_keys[i] for i in shortest_dists_idx]
 
-    # 1) Print all ff/ef among the top_k shortest
     ff_ef_indices = []
     for cid in shortest_clusters:
         ctype = cluster_info[cid]["Type"]
         if ctype in ["ff", "ef"]:
             ff_ef_indices.append(cid)
-            print(f"Cluster {cid}: Distance = {cluster_info[cid]['Distance']}, Type = {ctype}")
+            logger.debug("Cluster %s: Distance = %s, Type = %s", cid, cluster_info[cid]["Distance"], ctype)
 
-    # 2) From these, keep only the ff and ef with the *shortest* distance
     shortest_ff_idx, shortest_ff_dist = None, np.inf
     shortest_ef_idx, shortest_ef_dist = None, np.inf
 
@@ -262,31 +276,21 @@ def _cluster_and_extract_vectors(df, lam=4.0, eps=0.6, min_samples=5, top_k=5):
         axis_dist.append(info["Distance"])
         axis_idx.append(cid)
 
-    return list(zip(axis_idx, axis_type, axis_dist, axis)), cluster_info
+    selected = list(zip(axis_idx, axis_type, axis_dist, axis))
+    return selected, cluster_info
 
 
 def analyze_grain_latvecs(
-    gro_path,
-    output_txt=None,
-    visualize=False,
-    lam=4.0,
-    eps=0.6,
-    min_samples=5,
-    top_k=5,
+    gro_path: Path | str,
+    output_txt: Optional[Path | str] = None,
+    visualize: bool = False,
+    lam: float = 4.0,
+    eps: float = 0.6,
+    min_samples: int = 5,
+    top_k: int = 5,
 ):
     """
     Run the full lattice-vector analysis for a single grain .gro.
-
-    Parameters
-    ----------
-    gro_path : str or Path
-        Path to the grain .gro file (e.g. *_g1.gro or *_g2.gro from Step 3).
-    output_txt : str or Path, optional
-        Output text file. If None, uses "<stem>_output.txt" next to the .gro.
-    visualize : bool, default False
-        If True and py3Dmol is installed, opens a small COM visualization.
-    lam, eps, min_samples, top_k : float/int
-        Parameters passed into the original feature-building / DBSCAN logic.
 
     Returns
     -------
@@ -297,35 +301,26 @@ def analyze_grain_latvecs(
     """
     gro_path = Path(gro_path)
 
-    print(f"[latvecs] Reading grain from {gro_path}")
+    logger.info("[latvecs] Reading grain from %s", gro_path)
     sites, coms = _build_sites_from_gro(gro_path)
-    print(f"Total number of sites: {len(sites)}")
-    print(f"Center of Mass calculated for {len(sites)} sites.")
+    logger.info("Total number of sites: %d", len(sites))
 
     if visualize:
         view = _visualize_coms_py3Dmol(sites)
         if view is not None:
             view.show()
 
-    # STEP 3: pairwise analysis (in original script numbering)
     df = _pairwise_df(sites)
 
-    # STEP 5 & 6: clustering and vector extraction
     selected, cluster_info = _cluster_and_extract_vectors(
-        df,
-        lam=lam,
-        eps=eps,
-        min_samples=min_samples,
-        top_k=top_k,
+        df, lam=lam, eps=eps, min_samples=min_samples, top_k=top_k
     )
 
-    # Default output file: <stem>_output.txt in same directory
     if output_txt is None:
         output_txt = gro_path.with_name(f"{gro_path.stem}_latvecs.txt")
     else:
         output_txt = Path(output_txt)
 
-    # Save shortest ff/ef vectors (with cluster index and distance)
     with open(output_txt, "w") as f:
         f.write("# idx type distance vec_x vec_y vec_z\n")
         for cid, t, d, vec in selected:
@@ -333,5 +328,5 @@ def analyze_grain_latvecs(
             vec_str = " ".join(f"{x:.6f}" for x in v)
             f.write(f"{cid} {t} {d:.6f} {vec_str}\n")
 
-    print(f"Saved shortest ff/ef vectors (with cluster index and distance) to {output_txt}")
+    logger.info("Saved shortest ff/ef vectors (with cluster index and distance) to %s", output_txt)
     return selected, cluster_info

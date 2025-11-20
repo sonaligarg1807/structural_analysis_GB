@@ -1,21 +1,44 @@
 # contactplanes.py
-import numpy as np
-import MDAnalysis as mda
+"""
+Contact-plane inference between two grains.
+
+This module is a reorganized copy of the original code:
+- identical computations and outputs
+- added light documentation and logging
+- kept default filenames and wrapper behavior unchanged
+"""
+from __future__ import annotations
+
+import logging
 from pathlib import Path
+from typing import Optional, Tuple
+
+import MDAnalysis as mda
+import numpy as np
+
+logger = logging.getLogger(__name__)
+
+__all__ = ["contactplanes_for_group", "two_grains_contact_from_gro", "default_latvec_output_path"]
+
+EPS = 1e-12
 
 
-def normalize(v):
+def normalize(v: np.ndarray) -> np.ndarray:
     norm = np.linalg.norm(v)
-    return v / norm if norm > 1e-12 else v
+    return v / norm if norm > EPS else v
 
 
-def read_grain_vectors(filename):
+def read_grain_vectors(filename: Path | str) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
     """
-    Reads ff and ef vectors from file: idx type distance vec_x vec_y vec_z
-    Returns (ff_vector, ef_vector), each as np.ndarray or None.
+    Reads ff and ef vectors from file with format:
+      idx type distance vec_x vec_y vec_z
+
+    Returns (ff_vector, ef_vector) where each is np.ndarray or None if missing.
     """
-    ff_vec, ef_vec = None, None
-    with open(filename, "r") as f:
+    ff_vec: Optional[np.ndarray] = None
+    ef_vec: Optional[np.ndarray] = None
+    filename = Path(filename)
+    with filename.open("r") as f:
         for line in f:
             if line.strip().startswith("#"):
                 continue
@@ -31,12 +54,12 @@ def read_grain_vectors(filename):
     return ff_vec, ef_vec
 
 
-def assign_abc(ff_vec, ef_vec):
+def assign_abc(ff_vec: np.ndarray, ef_vec: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
-    Assign a, b, c axes from ff and ef vectors.
-    a: ff direction
-    b: ef direction
-    c: a × b
+    Assign a, b, c axes from ff and ef vectors:
+      - a: normalized ff direction
+      - b: normalized ef direction
+      - c: normalized cross(a, b)
     """
     a = normalize(ff_vec)
     b = normalize(ef_vec)
@@ -44,95 +67,85 @@ def assign_abc(ff_vec, ef_vec):
     return a, b, c
 
 
-def compute_com_from_gro(gro_file):
+def compute_com_from_gro(gro_file: Path | str) -> np.ndarray:
     """
-    Compute center of mass of all atoms in a .gro file using MDAnalysis
+    Compute center of mass of atoms in a .gro file using MDAnalysis.
     """
     u = mda.Universe(str(gro_file))
     return u.atoms.center_of_mass()
 
 
-def contactplan(a, b, c, contact_vec):
+def contactplan(a: np.ndarray, b: np.ndarray, c: np.ndarray, contact_vec: np.ndarray) -> str:
     """
     Given lattice axes a,b,c and a contact vector, determine which plane
     (ab, ac, bc) the interface normal is closest to.
     """
-    # Compute plane normals
     n_ab = normalize(np.cross(a, b))
     n_ac = normalize(np.cross(a, c))
     n_bc = normalize(np.cross(b, c))
 
-    # Dot products
     dot_ab = abs(np.dot(contact_vec, n_ab))
     dot_ac = abs(np.dot(contact_vec, n_ac))
     dot_bc = abs(np.dot(contact_vec, n_bc))
 
-    print(f" # Dot product with n_ab: {dot_ab:.4f}")
-    print(f" # Dot product with n_ac: {dot_ac:.4f}")
-    print(f" # Dot product with n_bc: {dot_bc:.4f}")
+    logger.debug("Dot product with n_ab: %.4f", dot_ab)
+    logger.debug("Dot product with n_ac: %.4f", dot_ac)
+    logger.debug("Dot product with n_bc: %.4f", dot_bc)
 
     dots = [dot_ab, dot_ac, dot_bc]
     planes = ["ab", "ac", "bc"]
-    return planes[np.argmax(dots)]
+    return planes[int(np.argmax(dots))]
 
 
-def two_grains_contact_from_gro(g1_gro_file, g2_gro_file, g1_txt, g2_txt):
+def two_grains_contact_from_gro(
+    g1_gro_file: Path | str, g2_gro_file: Path | str, g1_txt: Path | str, g2_txt: Path | str
+) -> Tuple[Optional[str], Optional[str]]:
     """
-    Original main function: given two grain .gro files and their ff/ef
-    txt outputs, compute contact planes for both grains.
+    Compute contact plane labels for two grains given grain .gro files and their latvec outputs.
 
-    Returns
-    -------
-    (g1_plane, g2_plane)
+    Returns (g1_plane, g2_plane) where each element is one of "ab","ac","bc" or None on failure.
     """
-    # Compute COMs from .gro files
     com1 = compute_com_from_gro(g1_gro_file)
     com2 = compute_com_from_gro(g2_gro_file)
-    print(f" # COM of Grain 1: {com1}")
-    print(f" # COM of Grain 2: {com2}")
+    logger.debug("COM of Grain 1: %s", com1)
+    logger.debug("COM of Grain 2: %s", com2)
 
-    # Contact vector
     conn_vec = com2 - com1
     if np.linalg.norm(conn_vec) < 1e-10:
-        print(" # ERROR: Grains overlap, cannot compute contact plane.")
+        logger.error("Grains overlap, cannot compute contact plane.")
         return None, None
     contact_vec = normalize(conn_vec)
-    print(f" # Contact vector: {contact_vec}")
+    logger.debug("Contact vector: %s", contact_vec)
 
-    # Read ff and ef vectors
-    ff1, ef1 = read_grain_vectors(g1_txt)
-    ff2, ef2 = read_grain_vectors(g2_txt)
+    ff1, ef1 = read_grain_vectors(Path(g1_txt))
+    ff2, ef2 = read_grain_vectors(Path(g2_txt))
 
-    # Assign a,b,c for each grain
-    a1, b1, c1 = assign_abc(ff1, ef1)
-    a2, b2, c2 = assign_abc(ff2, ef2)
+    if ff1 is None or ef1 is None or ff2 is None or ef2 is None:
+        logger.warning("Missing ff/ef vectors for one of the grains; results may be unreliable.")
 
-    # Compute contact planes
+    a1, b1, c1 = assign_abc(ff1, ef1)  # type: ignore[arg-type]
+    a2, b2, c2 = assign_abc(ff2, ef2)  # type: ignore[arg-type]
+
     g1_plane = contactplan(a1, b1, c1, contact_vec)
     g2_plane = contactplan(a2, b2, c2, contact_vec)
 
-    print(f" # Grain 1 contact plane: {g1_plane}")
-    print(f" # Grain 2 contact plane: {g2_plane}")
-    print(" # Finished contact plane analysis.")
-
+    logger.info("Grain 1 contact plane: %s", g1_plane)
+    logger.info("Grain 2 contact plane: %s", g2_plane)
     return g1_plane, g2_plane
 
 
-def default_latvec_output_path(gro_path):
+def default_latvec_output_path(gro_path: Path | str) -> Path:
     """
-    Given a grain .gro path, return the default latvec output txt path:
-      <stem>_output.txt
-    This matches analyze_grain_latvecs() behaviour.
+    Default latvec output filename for a grain .gro:
+      <stem>_latvecs.txt
     """
     p = Path(gro_path)
     return p.with_name(f"{p.stem}_latvecs.txt")
 
 
-def contactplanes_for_group(g1_gro_file, g2_gro_file, g1_txt=None, g2_txt=None):
+def contactplanes_for_group(g1_gro_file: Path | str, g2_gro_file: Path | str, g1_txt: Optional[Path | str] = None, g2_txt: Optional[Path | str] = None):
     """
-    Convenience wrapper for pipeline:
-      - If g1_txt / g2_txt not given, use <stem>_output.txt next to the .gro
-      - Call two_grains_contact_from_gro
+    Convenience wrapper: determine latvec txt paths if not provided and compute contact planes.
     """
     g1_gro_file = Path(g1_gro_file)
     g2_gro_file = Path(g2_gro_file)

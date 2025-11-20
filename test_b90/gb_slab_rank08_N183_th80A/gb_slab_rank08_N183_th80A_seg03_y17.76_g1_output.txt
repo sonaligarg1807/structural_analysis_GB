@@ -1,1 +1,0 @@
-# idx type distance vec_x vec_y vec_z

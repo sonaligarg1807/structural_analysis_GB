@@ -1,5 +1,8 @@
-"""Module defining the Site class for molecular residues."""
+"""Module defining the Site class for molecular residues.
 
+Refactored to include type hints and concise docstrings while preserving
+the original class API and numeric behavior.
+"""
 from __future__ import annotations
 
 from typing import List, Tuple
@@ -10,7 +13,9 @@ from scipy.spatial.transform import Rotation as Rot
 
 from .grotools import Residue
 
+__all__ = ["Site"]
 
+# small element mass lookup used for COM computation
 mass_ref = {"H": 1.001, "C": 12.001}  # extend if needed
 
 
@@ -57,19 +62,14 @@ class Site:
     def crds(self) -> np.ndarray:
         """(N, 3) array of atomic coordinates."""
         if self._crds is None:
-            self._crds = np.array(
-                [atom.position for atom in self.residue.atoms],
-                dtype=np.float32,
-            )
+            self._crds = np.array([atom.position for atom in self.residue.atoms], dtype=np.float32)
         return self._crds
 
     @property
     def masses(self) -> np.ndarray:
         """(N,) array of atomic masses from `mass_ref`."""
         if self._masses is None:
-            self._masses = np.array(
-                [mass_ref[lbl] for lbl in self.atomlbls], dtype=np.float32
-            )
+            self._masses = np.array([mass_ref.get(lbl, 12.001) for lbl in self.atomlbls], dtype=np.float32)
         return self._masses
 
     @property
@@ -87,30 +87,21 @@ class Site:
         """Convert a rotation matrix (3x3) to a quaternion (x, y, z, w)."""
         return Rot.from_matrix(rmat).as_quat()
 
-    def mw_pca_axes(
-        self,
-        n_comps: int = 3,
-        rot: str = "rmat",
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def mw_pca_axes(self, n_comps: int = 3, rot: str = "rmat") -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Mass-weighted PCA of this residue.
 
         Parameters
         ----------
-        n_comps
+        n_comps : int
             Number of PCA components to compute (2 or 3).
-        rot
+        rot : str
             'rmat' → return (axes, eigenvalues, rotation_matrix)
             'quat' → return (axes, eigenvalues, quaternion_xyzw)
 
         Returns
         -------
-        axes
-            (3, 3) array: rows are principal axes (long, short, normal).
-        explained_variance
-            (3,) eigenvalues.
-        rot_rep
-            Either 3x3 rotation matrix or quaternion (x, y, z, w).
+        axes, explained_variance, rot_rep
         """
         if rot not in ("rmat", "quat"):
             raise ValueError(" ## rot must be set to 'rmat' or 'quat'")

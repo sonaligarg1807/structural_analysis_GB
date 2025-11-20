@@ -1,0 +1,67 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "structural_analysis_gb"
+version = "0.1.0"
+description = "Structural grain-boundary analysis utilities (slab extraction, GB segmentation, layer selection, latvec/contact-plane/misorientation analysis)"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = [
+  {name = "sonaligarg1807"}
+]
+keywords = ["grain-boundary", "molecular", "MDAnalysis", "materials", "grain", "lattice"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Intended Audience :: Science/Research",
+]
+
+dependencies = [
+  "numpy>=1.22",
+  "scipy>=1.8",
+  "pandas>=1.4",
+  "scikit-learn>=1.0",
+  "MDAnalysis>=2.2",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=7.0",
+  "pytest-cov",
+  "black",
+  "isort",
+  "flake8",
+  "mypy",
+  "pre-commit",
+]
+visual = [
+  "py3Dmol; platform_system != 'Windows'"
+]
+orix = [
+  "orix; extra == 'orix'"
+]
+
+[tool.black]
+line-length = 88
+target-version = ['py39']
+
+[tool.isort]
+profile = "black"
+
+[tool.flake8]
+max-line-length = 88
+extend-ignore = ["E203", "W503"]
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+files = "src"
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = "--maxfail=1 -q"
+testpaths = ["tests"]

@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 GB multi-slab workflow (package version)
+
 Steps:
   1) Step-1: extract slabs + metadata
   2) Step-2: topological grain/GB classification (writes resid TXT)
@@ -16,7 +17,9 @@ User typically runs:
       --step3-mode multi \\
       --do-latvecs --do-contactplanes
 """
+from __future__ import annotations
 
+import logging
 import os
 import re
 from pathlib import Path
@@ -35,8 +38,19 @@ from src.filter_planes import filter_best_per_rank
 
 
 def run(args=None):
+    """
+    Entry point for the GB multi-slab workflow.
+
+    Behaviour, execution order and all public function calls are preserved from
+    the original script. This refactor only organizes logging and keeps the
+    same CLI interface (build_parser).
+    """
     parser = build_parser()
     args = parser.parse_args(args)
+
+    # Configure basic logging so informational messages appear on the console
+    logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
+    logger = logging.getLogger(__name__)
 
     os.makedirs(args.out_dir, exist_ok=True)
 
@@ -78,7 +92,7 @@ def run(args=None):
         # --- Step-3 mode selection ---
         mode = args.step3_mode.strip().lower()
         if mode not in ("single", "multi", "ask"):
-            print(f"[warn] STEP3_MODE='{args.step3_mode}' not recognized. Using 'ask'.")
+            logger.warning("STEP3_MODE='%s' not recognized. Using 'ask'.", args.step3_mode)
             mode = "ask"
 
         if mode == "ask":
@@ -155,8 +169,8 @@ def run(args=None):
     # ---------- Optional Step-4: latvecs + contact-planes per group ----------
     # we do this BEFORE writing the final summary, so contact_plane is up-to-date
     if args.do_latvecs or args.do_contactplanes:
-        print(
-            "[step4] Scanning groups with *_g1/_g2.gro for latvec/contact-plane analysis..."
+        logger.info(
+            "Scanning groups with *_g1/_g2.gro for latvec/contact-plane analysis..."
         )
 
         for r in final_rows:
@@ -183,7 +197,7 @@ def run(args=None):
                         top_k=args.latvecs_top_k,
                     )
                 except Exception as e:
-                    print(f"[latvecs] Warning: failed for {g1_path}: {e}")
+                    logger.warning("[latvecs] Warning: failed for %s: %s", g1_path, e)
 
                 # Grain 2
                 try:
@@ -197,7 +211,7 @@ def run(args=None):
                         top_k=args.latvecs_top_k,
                     )
                 except Exception as e:
-                    print(f"[latvecs] Warning: failed for {g2_path}: {e}")
+                    logger.warning("[latvecs] Warning: failed for %s: %s", g2_path, e)
 
             # --- 4b) Contact-plane analysis (needs latvec outputs on disk) ---
             if args.do_contactplanes:
@@ -226,8 +240,8 @@ def run(args=None):
                                 r["twist_deg"] = miso["twist_deg"]
                                 r["tilt_deg"] = miso["tilt_deg"]
                             except Exception as e_m:
-                                print(
-                                    f"[misori] Warning: failed for {g1_path}, {g2_path}: {e_m}"
+                                logger.warning(
+                                    "[misori] Warning: failed for %s, %s: %s", g1_path, g2_path, e_m
                                 )
                     else:
                         # no valid contact plane → no misorientation
@@ -236,8 +250,8 @@ def run(args=None):
                         r.setdefault("tilt_deg", None)
 
                 except Exception as e:
-                    print(
-                        f"[contactplanes] Warning: failed for {g1_path}, {g2_path}: {e}"
+                    logger.warning(
+                        "[contactplanes] Warning: failed for %s, %s: %s", g1_path, g2_path, e
                     )
                     r.setdefault("misori_deg", None)
                     r.setdefault("twist_deg", None)
@@ -297,7 +311,7 @@ def run(args=None):
                     f"{_fmt_float_or_na(tilt)}\n"
                 )
 
-        print(f"[done] Final summary (Step 1–4) → {final_path}")
+        logger.info("Final summary (Step 1–4) → %s", final_path)
 
         # ---- Optional filtering step (best-per-rank by contact_plane pattern) ----
         if getattr(args, "do_filter_planes", False):
@@ -308,7 +322,8 @@ def run(args=None):
                 plane_pair=args.filter_plane_pair,
             )
     else:
-        print("[done] Final summary not written (disabled).")
+        logger.info("Final summary not written (disabled).")
+
 
 if __name__ == "__main__":
     run()

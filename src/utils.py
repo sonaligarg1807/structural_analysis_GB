@@ -1,21 +1,53 @@
 # utils.py
-import re
-import warnings
+"""
+Utility functions used throughout the GB analysis pipeline.
+
+This refactored file preserves all original functions and behaviour while
+adding type hints and concise docstrings. No algorithmic changes were made.
+"""
+from __future__ import annotations
+
 from collections import deque
+from typing import Iterable, List, Optional, Sequence
 
 import numpy as np
 from numpy.linalg import eigh, svd, norm
 from sklearn.neighbors import NearestNeighbors
 from MDAnalysis.lib.distances import capped_distance
 
+__all__ = [
+    "unit",
+    "principal_normal",
+    "nematic_director",
+    "spherical_2means_headless",
+    "smooth_labels_spatial",
+    "detect_gb_pbc",
+    "fit_plane",
+    "signed_distance_along_vec",
+    "get_cell_vectors_A",
+    "axis_report",
+    "pbc_radius_neighbors",
+    "gyration_long_axis",
+    "nematic_embed",
+    "nematic_center_to_director",
+    "write_gro_for_resids",
+    "axis_vals_dict",
+    "unitcell_delta_for_axis",
+    "midlayer_center",
+    "margin_mask_1d",
+    "wrap_axis_to_center",
+    "layer_mask",
+    "connected_components",
+]
 
-def unit(v):
+
+def unit(v: Sequence[float]) -> np.ndarray:
     v = np.asarray(v, float)
     n = norm(v)
     return v / n if n > 1e-12 else v
 
 
-def principal_normal(points_xyz):
+def principal_normal(points_xyz: np.ndarray) -> np.ndarray:
     P = points_xyz - points_xyz.mean(0)
     C = P.T @ P
     evals, evecs = eigh(C)
@@ -25,7 +57,7 @@ def principal_normal(points_xyz):
     return n
 
 
-def nematic_director(normals):
+def nematic_director(normals: np.ndarray) -> np.ndarray:
     S = normals.T @ normals / len(normals)
     evals, evecs = eigh(S)
     d = evecs[:, np.argmax(evals)]
@@ -34,7 +66,7 @@ def nematic_director(normals):
     return unit(d)
 
 
-def spherical_2means_headless(normals, iters=20, seed=0):
+def spherical_2means_headless(normals: np.ndarray, iters: int = 20, seed: int = 0) -> np.ndarray:
     rng = np.random.default_rng(seed)
     labels = rng.integers(0, 2, size=len(normals))
     for _ in range(iters):
@@ -49,7 +81,10 @@ def spherical_2means_headless(normals, iters=20, seed=0):
     return labels
 
 
-def smooth_labels_spatial(coms, labels, box, cutoff=5.0, iters=2):
+def smooth_labels_spatial(coms: np.ndarray, labels: np.ndarray, box: Sequence[float], cutoff: float = 5.0, iters: int = 2) -> np.ndarray:
+    """
+    Spatial smoothing of discrete labels using capped_distance under PBC.
+    """
     labels = labels.copy()
     for _ in range(iters):
         pairs = capped_distance(coms, coms, max_cutoff=cutoff, box=box, return_distances=False)
@@ -69,7 +104,7 @@ def smooth_labels_spatial(coms, labels, box, cutoff=5.0, iters=2):
     return labels
 
 
-def detect_gb_pbc(coms, labels, box, cutoff=5.0):
+def detect_gb_pbc(coms: np.ndarray, labels: np.ndarray, box: Sequence[float], cutoff: float = 5.0) -> np.ndarray:
     N = len(coms)
     is_gb = np.zeros(N, dtype=bool)
     pairs = capped_distance(coms, coms, max_cutoff=cutoff, box=box, return_distances=False)
@@ -80,7 +115,7 @@ def detect_gb_pbc(coms, labels, box, cutoff=5.0):
     return is_gb
 
 
-def fit_plane(points):
+def fit_plane(points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     ctr = points.mean(0)
     P = points - ctr
     _, _, vh = svd(P, full_matrices=False)
@@ -88,12 +123,12 @@ def fit_plane(points):
     return ctr, n
 
 
-def signed_distance_along_vec(x, ctr, vhat):
+def signed_distance_along_vec(x: np.ndarray, ctr: np.ndarray, vhat: np.ndarray) -> np.ndarray:
     x = np.asarray(x, float)
     return (x - ctr) @ vhat
 
 
-def get_cell_vectors_A(ts):
+def get_cell_vectors_A(ts) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     tri = getattr(ts, "triclinic_dimensions", None)
     if tri is not None and np.shape(tri) == (3, 3):
         return tri[0], tri[1], tri[2]
@@ -108,12 +143,12 @@ def get_cell_vectors_A(ts):
     return a, b, c
 
 
-def axis_report(n, a_vec, b_vec, c_vec):
+def axis_report(n: np.ndarray, a_vec: np.ndarray, b_vec: np.ndarray, c_vec: np.ndarray):
     cart = {"x": np.array([1.0, 0.0, 0.0]), "y": np.array([0.0, 1.0, 0.0]), "z": np.array([0.0, 0.0, 1.0])}
     latt = {"a": a_vec, "b": b_vec, "c": c_vec}
 
     def best(dct):
-        best_k, best_c = None, -1
+        best_k, best_c = None, -1.0
         for k, v in dct.items():
             c = abs(np.dot(unit(n), unit(v)))
             if c > best_c:
@@ -126,7 +161,7 @@ def axis_report(n, a_vec, b_vec, c_vec):
     return cart_k, cart_ang, lat_k, lat_ang
 
 
-def pbc_radius_neighbors(positions, radius, box, include_self=False):
+def pbc_radius_neighbors(positions: np.ndarray, radius: float, box: Sequence[float], include_self: bool = False):
     pairs = capped_distance(positions, positions, max_cutoff=radius, box=box)[0]
     N = positions.shape[0]
     neigh = [[] for _ in range(N)]
@@ -138,7 +173,7 @@ def pbc_radius_neighbors(positions, radius, box, include_self=False):
     return [np.array(n, dtype=int) for n in neigh]
 
 
-def gyration_long_axis(ag):
+def gyration_long_axis(ag) -> np.ndarray:
     pos = ag.positions - ag.center_of_mass()
     if pos.shape[0] < 3:
         return unit(pos[-1] - pos[0]) if pos.shape[0] >= 2 else np.array([1.0, 0.0, 0.0])
@@ -147,12 +182,12 @@ def gyration_long_axis(ag):
     return unit(evecs[:, np.argmax(evals)])
 
 
-def nematic_embed(u):
+def nematic_embed(u: Sequence[float]) -> np.ndarray:
     U = np.outer(u, u)
     return np.array([U[0, 0], U[1, 1], U[2, 2], U[0, 1], U[0, 2], U[1, 2]], float)
 
 
-def nematic_center_to_director(center6d):
+def nematic_center_to_director(center6d: Sequence[float]) -> np.ndarray:
     xx, yy, zz, xy, xz, yz = center6d
     M = np.array([[xx, xy, xz], [xy, yy, yz], [xz, yz, zz]], float)
     M = 0.5 * (M + M.T)
@@ -160,8 +195,8 @@ def nematic_center_to_director(center6d):
     return unit(evecs[:, np.argmax(evals)])
 
 
-def write_gro_for_resids(u, resid_list, out_path, resid_to_idx):
-    from MDAnalysis.coordinates.GRO import GROWriter
+def write_gro_for_resids(u, resid_list: Sequence[int], out_path: str, resid_to_idx: dict) -> bool:
+    from MDAnalysis.coordinates.GRO import GROWriter  # local import as before
 
     if not resid_list:
         return False
@@ -176,11 +211,11 @@ def write_gro_for_resids(u, resid_list, out_path, resid_to_idx):
     return True
 
 
-def axis_vals_dict(COM):
+def axis_vals_dict(COM: np.ndarray):
     return {"x": COM[:, 0], "y": COM[:, 1], "z": COM[:, 2]}
 
 
-def unitcell_delta_for_axis(axis, A_LEN, B_LEN, C_LEN):
+def unitcell_delta_for_axis(axis: str, A_LEN: float, B_LEN: float, C_LEN: float) -> float:
     if axis == "x":
         return float(A_LEN)
     if axis == "y":
@@ -190,33 +225,33 @@ def unitcell_delta_for_axis(axis, A_LEN, B_LEN, C_LEN):
     raise ValueError(f"Axis must be x/y/z, got {axis!r}")
 
 
-def midlayer_center(arr):
+def midlayer_center(arr: np.ndarray) -> float:
     amin, amax = np.min(arr), np.max(arr)
     return 0.5 * (amin + amax)
 
 
-def margin_mask_1d(arr, margin):
+def margin_mask_1d(arr: np.ndarray, margin: float) -> np.ndarray:
     amin, amax = np.min(arr), np.max(arr)
     lo, hi = amin + margin, amax - margin
     return (arr >= lo) & (arr <= hi)
 
 
-def wrap_axis_to_center(vals, box_len, center):
+def wrap_axis_to_center(vals: np.ndarray, box_len: float, center: float) -> np.ndarray:
     if not np.isfinite(box_len) or box_len <= 0:
         return vals
     return center + ((vals - center + 0.5 * box_len) % box_len) - 0.5 * box_len
 
 
-def layer_mask(vals_unwrapped, layer_center, thickness, box_len_axis):
+def layer_mask(vals_unwrapped: np.ndarray, layer_center: float, thickness: float, box_len_axis: float) -> np.ndarray:
     half = 0.5 * thickness
     vals_wrapped = wrap_axis_to_center(vals_unwrapped, box_len_axis, layer_center)
     return np.abs(vals_wrapped - layer_center) <= half
 
 
-def connected_components(COM, radius, subset_idx=None):
+def connected_components(COM: np.ndarray, radius: float, subset_idx: Optional[Sequence[int]] = None) -> List[np.ndarray]:
     """
     Connected components over points with radius-neighbor graph.
-    Returns a list of np.array indices.
+    Returns a list of numpy arrays with global indices for each component.
     """
     if subset_idx is None:
         subset_idx = np.arange(len(COM), dtype=int)
@@ -227,7 +262,7 @@ def connected_components(COM, radius, subset_idx=None):
     nbrs = NearestNeighbors(radius=radius).fit(COM[subset_idx])
     G = nbrs.radius_neighbors_graph(COM[subset_idx], mode="connectivity")
     seen = np.zeros(subset_idx.size, dtype=bool)
-    comps = []
+    comps: List[np.ndarray] = []
     for s in range(subset_idx.size):
         if seen[s]:
             continue

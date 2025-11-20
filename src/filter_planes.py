@@ -7,27 +7,25 @@ Selection criteria (applied in order):
   0) KEEP ONLY rows where the contact_plane matches a user-specified pair,
      e.g. "ac-ac" meaning g1=ac, g2=ac (with 'ca' treated as 'ac'-family).
   1) minimal dist_to_box_center_A
-  2) maximal min(G1_N, G2_N)         (balance: both grains large)
-  3) maximal (G1_N + G2_N)           (total grain size)
-  4) maximal GB_N                    (size of GB set)
+  2) maximal min(G1,G2)         (balance: both grains large)
+  3) maximal (G1_N + G2_N)      (total grain size)
+  4) maximal GB_N               (size of GB set)
 
-Typical use (inside pipeline):
-  filter_best_per_rank(
-      summary_path = OUT_DIR / FINAL_gb_summary.txt,
-      out_path     = OUT_DIR / FILTERED_best_per_rank.txt,
-      plane_pair   = "ac-ac",
-  )
+This refactor preserves exact behavior but uses structured logging and
+adds small docstrings and type hints.
 """
-
 from __future__ import annotations
 
 import csv
-from pathlib import Path
+import logging
 from collections import defaultdict
+from pathlib import Path
 from typing import List, Tuple
 
+logger = logging.getLogger(__name__)
 
 # ---------- contact-plane parsing helpers ----------
+
 
 def _normalize_plane_label(label: str) -> str:
     """
@@ -39,16 +37,8 @@ def _normalize_plane_label(label: str) -> str:
 
 def _extract_planes_g1_g2(field: str) -> List[str]:
     """
-    Parse a contact_plane field that may look like:
-        'g1=ac,g2=ac'
-        'g1=ab,g2=ac'
-        'g1=ac , g2=ca'
-        'ac,ac'
-        'ac,ab'
-        'ac'      (legacy / ambiguous, treated as single)
-
-    Returns a list of plane labels, e.g. ['ac', 'ac'].
-    If parsing fails or there are no valid labels, returns [].
+    Parse a contact_plane field into a list of plane labels (g1, g2).
+    Returns list of labels (may be shorter than 2 if parsing fails).
     """
     if not field:
         return []
@@ -63,7 +53,7 @@ def _extract_planes_g1_g2(field: str) -> List[str]:
     for sep in [" ", ";"]:
         lab = lab.replace(sep, "")
 
-    # Now split on commas: 'g1=ac,g2=ac' -> ['g1=ac', 'g2=ac']
+    # Split on commas: 'g1=ac,g2=ac' -> ['g1=ac', 'g2=ac']
     parts = [p for p in lab.split(",") if p]
 
     planes: List[str] = []
@@ -81,13 +71,8 @@ def _extract_planes_g1_g2(field: str) -> List[str]:
 
 def _parse_plane_pair_spec(spec: str) -> Tuple[str, str]:
     """
-    Parse a user plane-pair spec like:
-        'ac-ac', 'ac,ac', 'g1=ac,g2=ac'
-    into (plane1, plane2).
-
-    If only one label is given (e.g. 'ac'), we assume the same for both grains.
-
-    '*' is allowed as a wildcard (matches any plane).
+    Parse a user plane-pair spec like 'ac-ac' into (plane1, plane2).
+    '*' is allowed as a wildcard.
     """
     if not spec:
         return "*", "*"
@@ -119,7 +104,7 @@ def _match_single_plane(actual: str, pattern: str) -> bool:
 
     Rules:
       - pattern '*'  → matches anything
-      - for 'ac', 'ca' we treat them as same family (ac-type)
+      - 'ac' and 'ca' are treated as equivalent family
       - otherwise: exact match
     """
     actual = _normalize_plane_label(actual)
@@ -132,7 +117,6 @@ def _match_single_plane(actual: str, pattern: str) -> bool:
     if pattern in ("ac", "ca"):
         return actual in ("ac", "ca")
 
-    # you could extend this with ab/ba, bc/cb etc. if ever needed
     return actual == pattern
 
 
@@ -140,10 +124,7 @@ def match_plane_pair(field: str, plane_pair: str) -> bool:
     """
     Return True if contact_plane field matches the user pattern.
 
-    plane_pair is a string like:
-        'ac-ac' → g1=ac, g2=ac (ac/ca family)
-        'ab-ac' → g1=ab, g2=ac
-        'ac-*'  → g1=ac, g2=anything
+    plane_pair examples: 'ac-ac', 'ab-ac', 'ac-*'
     """
     planes_actual = _extract_planes_g1_g2(field)
     if len(planes_actual) != 2:
@@ -151,12 +132,11 @@ def match_plane_pair(field: str, plane_pair: str) -> bool:
         return False
 
     p1, p2 = _parse_plane_pair_spec(plane_pair)
-    return _match_single_plane(planes_actual[0], p1) and _match_single_plane(
-        planes_actual[1], p2
-    )
+    return _match_single_plane(planes_actual[0], p1) and _match_single_plane(planes_actual[1], p2)
 
 
 # ---------- ranking / tie-breakers ----------
+
 
 def row_key_for_tiebreakers(row):
     """
@@ -171,24 +151,24 @@ def row_key_for_tiebreakers(row):
 
 # ---------- main API ----------
 
+
 def filter_best_per_rank(
-    summary_path,
-    out_path,
+    summary_path: Path | str,
+    out_path: Path | str,
     plane_pair: str = "ac-ac",
 ) -> None:
     """
     Filter FINAL_gb_summary.txt to one best row per slab_rank matching
-    a given contact_plane pattern, and write a FILTERED_best_per_rank-like TSV.
+    a given contact_plane pattern, and write a filtered TSV.
 
     Parameters
     ----------
-    summary_path : str or Path
+    summary_path : Path or str
         Path to FINAL_gb_summary.txt written by main pipeline.
-    out_path : str or Path
-        Output TSV path, e.g. OUT_DIR / "FILTERED_best_per_rank.txt".
+    out_path : Path or str
+        Output TSV path.
     plane_pair : str
         Desired plane pattern, e.g. "ac-ac", "ab-ac", "ac-*".
-        See match_plane_pair() for details.
     """
     summary_path = Path(summary_path)
     out_path = Path(out_path)
@@ -201,7 +181,7 @@ def filter_best_per_rank(
     if not rows:
         raise ValueError(f"No data rows found in {summary_path}")
 
-    # Normalize / validate essential fields
+    # Validate essential fields
     needed = {
         "slab_rank",
         "slab_dir",
@@ -217,17 +197,13 @@ def filter_best_per_rank(
     }
     missing = needed - set(rows[0].keys())
     if missing:
-        raise ValueError(
-            f"Input file missing required columns: {sorted(missing)}"
-        )
+        raise ValueError(f"Input file missing required columns: {sorted(missing)}")
 
     # Filter by contact_plane pattern
-    matched_rows = [
-        r for r in rows if match_plane_pair(r.get("contact_plane", ""), plane_pair)
-    ]
+    matched_rows = [r for r in rows if match_plane_pair(r.get("contact_plane", ""), plane_pair)]
 
     # Group by slab_rank
-    by_rank = defaultdict(list)
+    by_rank: dict[int, list] = defaultdict(list)
     for r in matched_rows:
         try:
             r["slab_rank"] = int(r["slab_rank"])
@@ -273,24 +249,23 @@ def filter_best_per_rank(
         for r in best_rows:
             w.writerow({c: r[c] for c in out_cols})
 
-    # Console summary
-    print(f"[filter_planes] Wrote best-per-rank selection → {out_path}")
-    print(
-        f"[filter_planes] Ranks covered (matching plane_pair='{plane_pair}'): "
-        f"{len(best_rows)}"
-    )
+    logger.info("Wrote best-per-rank selection → %s", out_path)
+    logger.info("Ranks covered (matching plane_pair='%s'): %d", plane_pair, len(best_rows))
     if best_rows:
         closest = min(best_rows, key=lambda r: r["dist_to_box_center_A"])
-        print(
-            "[filter_planes] Closest to box center: "
-            f"slab {closest['slab_rank']} "
-            f"({closest['slab_dir']}, {closest['slab_stem']}) "
-            f"Δ={closest['dist_to_box_center_A']:.2f} Å | "
-            f"G1={closest['G1_N']} G2={closest['G2_N']} GB={closest['GB_N']} | "
-            f"planes={closest['contact_plane']}"
+        logger.info(
+            "Closest to box center: slab %s (%s, %s) Δ=%.2f Å | G1=%s G2=%s GB=%s | planes=%s",
+            closest["slab_rank"],
+            closest["slab_dir"],
+            closest["slab_stem"],
+            closest["dist_to_box_center_A"],
+            closest["G1_N"],
+            closest["G2_N"],
+            closest["GB_N"],
+            closest["contact_plane"],
         )
     else:
-        print(
-            "[filter_planes] No rows matched the requested plane_pair "
-            f"('{plane_pair}'). Check your FINAL_gb_summary.txt or labels."
+        logger.info(
+            "No rows matched the requested plane_pair ('%s'). Check your FINAL_gb_summary.txt or labels.",
+            plane_pair,
         )

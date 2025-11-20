@@ -3,50 +3,18 @@
 Compute crystallographic misorientation between two grains using the same
 lattice vectors (ff/ef) used for contact-plane analysis.
 
-This module is OPTIONAL and is meant to be run *after* you have run
-lattice-vector analysis (latvecs) and contact-plane analysis for a GB group.
-
-Main usages
------------
-1) Low-level (frames already known):
-
-   miso = misorientation_from_frames(gA, gB, gb_normal, symmetry_name="triclinic")
-
-   where gA, gB are 3x3 rotation matrices (columns = a,b,c in lab frame).
-
-2) High-level (pipeline-friendly, same inputs as contactplanes_for_group):
-
-   miso = misorientation_for_group(
-       g1_gro_file, g2_gro_file,
-       g1_txt=None, g2_txt=None,
-       symmetry_name="triclinic"
-   )
-
-   - If g1_txt/g2_txt are None, uses "<stem>_output.txt" next to each .gro
-     (same convention as analyze_grain_latvecs and contactplanes_for_group).
-   - Uses COM(g1), COM(g2) to define GB normal (com2 - com1).
-   - Reads ff/ef from those txt files, builds grain frames via assign_abc.
-
-Return value
-------------
-Both functions return a dict with keys:
-
-    - "theta_deg" : total misorientation angle (degrees) or None
-    - "axis"      : 3-vector (unit) or None
-    - "twist_deg" : twist component about GB normal (deg) or None
-    - "tilt_deg"  : tilt component (deg) or None
-    - "method"    : "orix" if computed, otherwise "none"
-
-If orix is not installed or something fails, all values are None and method="none".
+This refactored version preserves the original algorithms and public API,
+but is import-safe, uses structured logging and includes concise type hints
+and docstrings. No algorithmic logic was changed.
 """
-
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Dict, Optional, Tuple
 
 import numpy as np
 from numpy.linalg import norm, svd
-from pathlib import Path
+import logging
 
 # Reuse helpers from contactplanes so we are guaranteed to use the same vectors/logic
 from .contactplanes import (
@@ -57,21 +25,19 @@ from .contactplanes import (
     default_latvec_output_path,
 )
 
+logger = logging.getLogger(__name__)
+
 # ========= Optional: orix (recommended) =========
 try:
-    from orix.quaternion import Orientation, Misorientation
-    from orix.crystal_map import Phase
+    from orix.quaternion import Orientation, Misorientation  # type: ignore
+    from orix.crystal_map import Phase  # type: ignore
 
     ORIX_AVAILABLE = True
-    print("[misori] orix available")
-except Exception as e:  # pragma: no cover - import-time
+    logger.info("[misori] orix available")
+except Exception as e:  # pragma: no cover - import-time may fail when orix missing
     ORIX_AVAILABLE = False
-    print(f"[misori] orix not available ({e}). Misorientation will be skipped.")
+    logger.info("[misori] orix not available (%s). Misorientation will be skipped.", e)
 
-
-# ---------------------------------------------------------------------------
-# Small linear-algebra helpers
-# ---------------------------------------------------------------------------
 
 def unit(v: np.ndarray) -> np.ndarray:
     """Normalize a 3D vector; return zero-vector unchanged if norm=0."""
@@ -94,10 +60,6 @@ def orthonormalize(A: np.ndarray) -> np.ndarray:
     return Rso
 
 
-# ---------------------------------------------------------------------------
-# orix symmetry + misorientation
-# ---------------------------------------------------------------------------
-
 def _build_orix_symmetry(symmetry_name: str):
     """
     Map user-friendly symmetry names to an orix Phase point group.
@@ -109,7 +71,7 @@ def _build_orix_symmetry(symmetry_name: str):
 
     name = symmetry_name.lower().strip()
     if name in {"triclinic", "ci", "-1", "p-1", "p -1"}:
-        pg = "-1"     # pentacene
+        pg = "-1"  # pentacene
     elif name in {"monoclinic_b", "2/m"}:
         pg = "2/m"
     elif name in {"orthorhombic", "mmm"}:
@@ -152,23 +114,12 @@ def calculate_misorientation_orix(
     """
     Compute misorientation using orix with the chosen symmetry.
 
-    Parameters
-    ----------
-    gA, gB
-        3x3 rotation matrices (grain frames) in the lab frame.
-        Columns should be an orthonormal basis for each grain.
-        Here we typically use columns = (a, b, c) from ff/ef analysis.
-    symmetry_name
-        A string describing the crystal symmetry, e.g. "triclinic", "2/m", "mmm".
+    Returns (angle_deg, Rmat, axis) where:
+      - angle_deg is the minimal misorientation angle (degrees)
+      - Rmat is the 3x3 misorientation rotation matrix (or None)
+      - axis is the misorientation axis (unit vector) in lab frame (or None)
 
-    Returns
-    -------
-    angle_deg
-        Minimal misorientation angle in degrees (or None if orix unavailable).
-    Rmat
-        3x3 rotation matrix for the misorientation (or None).
-    axis
-        3-vector (unit) for the misorientation axis in the lab frame (or None).
+    If orix is not available or the computation fails, returns (None, None, None).
     """
     if not ORIX_AVAILABLE:
         return None, None, None
@@ -180,7 +131,7 @@ def calculate_misorientation_orix(
     try:
         sym = _build_orix_symmetry(symmetry_name)
         if sym is None:
-            print("[misori] Could not build symmetry; skipping misorientation.")
+            logger.warning("[misori] Could not build symmetry; skipping misorientation.")
             return None, None, None
 
         OA = Orientation.from_matrix(gA, symmetry=sym)
@@ -202,7 +153,7 @@ def calculate_misorientation_orix(
         angle_deg = float(ang_deg[idx])
         axis = unit(axes[idx])
 
-        # Get misorientation matrix
+        # Get misorientation matrix (may be single matrix or array)
         Rmat = None
         try:
             Rm = Mred.as_matrix()
@@ -217,13 +168,9 @@ def calculate_misorientation_orix(
         return angle_deg, Rmat, axis
 
     except Exception as e:
-        print(f"[misori] orix misorientation failed: {e}")
+        logger.exception("[misori] orix misorientation failed: %s", e)
         return None, None, None
 
-
-# ---------------------------------------------------------------------------
-# High-level helper: from frames + GB normal
-# ---------------------------------------------------------------------------
 
 def misorientation_from_frames(
     gA: np.ndarray,
@@ -237,31 +184,17 @@ def misorientation_from_frames(
 
     Parameters
     ----------
-    gA, gB
-        3x3 grain frames (rotation matrices) in lab coordinates.
-        These should be the same grain frames you used for contact-plane
-        analysis. For this package, we typically build them as:
-
-            g = [a b c]
-
-        where a,b,c are the lattice vectors (ff,ef,a×b).
-    gb_normal
-        3-vector for the GB plane normal in lab coordinates.
-        If provided, we compute:
-            - twist_deg = |axis · gb_normal| * Θ
-            - tilt_deg  = sqrt(Θ^2 - twist_deg^2)
-        If None, twist_deg and tilt_deg are returned as None.
-    symmetry_name
-        Crystal symmetry string for orix (e.g. "triclinic", "2/m", "mmm").
+    gA, gB : 3x3 arrays
+        Grain frames (columns = a,b,c) in lab coordinates.
+    gb_normal : optional 3-vector
+        GB plane normal in lab coords. If provided, compute twist/tilt decomposition.
+    symmetry_name : str
+        Symmetry label for orix.
 
     Returns
     -------
     dict with keys:
-        - "theta_deg" : total misorientation angle Θ (degrees) or None
-        - "axis"      : 3-vector (unit) or None
-        - "twist_deg" : twist component about GB normal (deg) or None
-        - "tilt_deg"  : tilt component (deg) or None
-        - "method"    : "orix" if computed, otherwise "none"
+      - "theta_deg", "axis", "twist_deg", "tilt_deg", "method"
     """
     angle_deg, R_delta, axis = calculate_misorientation_orix(
         gA, gB, symmetry_name=symmetry_name
@@ -275,9 +208,6 @@ def misorientation_from_frames(
             "tilt_deg": None,
             "method": "none",
         }
-
-    twist_deg: Optional[float]
-    tilt_deg: Optional[float]
 
     if gb_normal is not None:
         gbn = unit(gb_normal)
@@ -297,10 +227,6 @@ def misorientation_from_frames(
     }
 
 
-# ---------------------------------------------------------------------------
-# Pipeline-level helper: from the same grain files as contactplanes_for_group
-# ---------------------------------------------------------------------------
-
 def misorientation_for_group(
     g1_gro_file,
     g2_gro_file,
@@ -311,28 +237,8 @@ def misorientation_for_group(
     """
     High-level convenience wrapper for the GB pipeline.
 
-    It mirrors the I/O style of contactplanes_for_group:
-
-      - If g1_txt / g2_txt are not given, uses "<stem>_output.txt" next
-        to the .gro files (same as analyze_grain_latvecs()).
-      - Uses COM(g1) and COM(g2) from the .gro files (via MDAnalysis) to
-        define the GB normal as com2 - com1 (same as contactplanes.py).
-      - Reads ff/ef vectors from the respective *_output.txt files via
-        `read_grain_vectors`.
-      - Builds grain frames g1, g2 as [a b c] using `assign_abc`.
-      - Calls `misorientation_from_frames` and returns its dict.
-
-    Returns
-    -------
-    miso : dict
-        Same as misorientation_from_frames().
-
-    Notes
-    -----
-    This is intended to be **optional**:
-      - You only call it for GB groups where you have already run
-        latvecs + contact-plane analysis.
-      - If orix is not available, all values will be None and method="none".
+    Mirrors contactplanes_for_group inputs and returns the same dict format as
+    misorientation_from_frames().
     """
     g1_gro_file = Path(g1_gro_file)
     g2_gro_file = Path(g2_gro_file)
@@ -351,7 +257,7 @@ def misorientation_for_group(
     com2 = compute_com_from_gro(g2_gro_file)
     conn_vec = com2 - com1
     if norm(conn_vec) < 1e-10:
-        print("[misori] ERROR: Grains overlap, cannot compute GB normal.")
+        logger.error("[misori] Grains overlap, cannot compute GB normal.")
         return {
             "theta_deg": None,
             "axis": None,
@@ -366,7 +272,7 @@ def misorientation_for_group(
     ff2, ef2 = read_grain_vectors(str(g2_txt))
 
     if ff1 is None or ef1 is None or ff2 is None or ef2 is None:
-        print("[misori] Missing ff/ef vectors; skipping misorientation.")
+        logger.warning("[misori] Missing ff/ef vectors; skipping misorientation.")
         return {
             "theta_deg": None,
             "axis": None,
@@ -389,13 +295,14 @@ def misorientation_for_group(
         symmetry_name=symmetry_name,
     )
 
-    # Small log for debug
     if miso["theta_deg"] is not None:
-        print(
-            f"[misori] Θ = {miso['theta_deg']:.2f}°, "
-            f"twist = {miso['twist_deg']}, tilt = {miso['tilt_deg']}"
+        logger.info(
+            "[misori] Θ = %.2f°, twist = %s, tilt = %s",
+            miso["theta_deg"],
+            miso["twist_deg"],
+            miso["tilt_deg"],
         )
     else:
-        print("[misori] Misorientation not computed (orix missing or input issue).")
+        logger.info("[misori] Misorientation not computed (orix missing or input issue).")
 
     return miso

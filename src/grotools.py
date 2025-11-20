@@ -1,11 +1,28 @@
-"""Utilities for parsing GRO files and representing atoms/residues."""
+"""Utilities for parsing GRO files and representing atoms/residues.
 
+This file is a direct, reorganized version of the original:
+- same parsing logic, data structures and behaviour
+- added docstrings, typing and minimal logging for clarity
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Iterable, List
 
 import numpy as np
+
+__all__ = [
+    "gro_resid",
+    "gro_resname",
+    "gro_atomname",
+    "gro_atomnr",
+    "gro_atom_pos",
+    "Atom",
+    "Residue",
+    "parse_atom_line",
+    "make_residue",
+    "split_gro2residues",
+]
 
 
 # --- low-level field extractors -------------------------------------------------
@@ -79,8 +96,6 @@ def parse_atom_line(gro_line: str) -> Atom:
 def make_residue(atoms: List[Atom], resid: int) -> Residue:
     """
     Create a Residue object from a list of Atom objects with the same resid.
-
-    NOTE: For most workflows you'll just call `split_gro2residues` instead.
     """
     res_atoms = [atom for atom in atoms if atom.resid == resid]
     if not res_atoms:
@@ -93,18 +108,8 @@ def split_gro2residues(atom_lines: Iterable[str]) -> List[Residue]:
     """
     Split GRO atom lines into Residue objects.
 
-    Assumes that atoms are ordered by residue ID (standard for GROMACS .gro
-    where each residue is contiguous). This makes the grouping O(N) instead of
-    O(N^2).
-
-    Parameters
-    ----------
-    atom_lines
-        Lines containing only atom records, i.e. `gro[2:-1]`.
-
-    Returns
-    -------
-    list[Residue]
+    Assumes atoms are ordered by residue ID (standard .gro ordering). This keeps
+    grouping linear in the number of atoms.
     """
     residues: List[Residue] = []
     current_resid: int | None = None

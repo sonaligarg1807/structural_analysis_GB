@@ -1,4 +1,13 @@
 # parser.py
+"""
+Argument parser for the structural_analysis_GB pipeline.
+
+This file exposes build_parser() which returns an argparse.ArgumentParser
+configured with flags used by main.py. The flags, defaults and names are kept
+identical to the original implementation for backward compatibility.
+"""
+from __future__ import annotations
+
 import argparse
 
 
@@ -158,8 +167,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="Do not write final summary file",
     )
     p.set_defaults(write_final_summary=True)
-    
-        # ---- Latvecs (lattice vector) analysis ----
+
+    # ---- Latvecs (lattice vector) analysis ----
     p.add_argument(
         "--latvecs",
         dest="do_latvecs",
@@ -200,7 +209,8 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Visualize COMs with py3Dmol during latvec analysis (if installed).",
     )
-        # ---- Contact-plane analysis (requires latvecs outputs) ----
+
+    # ---- Contact-plane analysis (requires latvecs outputs) ----
     p.add_argument(
         "--contactplanes",
         dest="do_contactplanes",
@@ -232,7 +242,8 @@ def build_parser() -> argparse.ArgumentParser:
             "Default: 'triclinic'."
         ),
     )
-        # ---- Optional filtering of final summary by contact_plane pattern ----
+
+    # ---- Optional filtering of final summary by contact_plane pattern ----
     p.add_argument(
         "--filter-planes",
         dest="do_filter_planes",
@@ -265,5 +276,3 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     return p
-
-

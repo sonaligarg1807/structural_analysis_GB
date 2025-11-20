@@ -1,2 +1,0 @@
-# idx type distance vec_x vec_y vec_z
-53 ef 0.473109 -0.623614 0.781493 0.019365

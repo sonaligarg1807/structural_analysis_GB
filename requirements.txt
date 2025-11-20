@@ -1,0 +1,6 @@
+# Minimal runtime dependencies (pin as you see fit for reproducibility)
+numpy>=1.22
+scipy>=1.8
+pandas>=1.4
+scikit-learn>=1.0
+MDAnalysis>=2.2
