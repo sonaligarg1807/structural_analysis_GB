@@ -196,6 +196,10 @@ def filter_best_per_rank(
         "misori_deg",
         "twist_deg",
         "tilt_deg",
+        "axis_gb_normal_angle",
+        "axis_g1_align",
+        "axis_g2_align",
+        "dominant_type",
     }
     missing = needed - set(rows[0].keys())
     if missing:
@@ -246,6 +250,10 @@ def filter_best_per_rank(
         "misori_deg",
         "twist_deg",
         "tilt_deg",
+        "axis_gb_normal_angle",
+        "axis_g1_align",
+        "axis_g2_align",
+        "dominant_type",
     ]
     with out_path.open("w", newline="") as f:
         w = csv.DictWriter(f, delimiter="\t", fieldnames=out_cols)
