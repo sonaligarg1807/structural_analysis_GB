@@ -125,7 +125,7 @@ def _pairwise_df(sites: List[Site]) -> pd.DataFrame:
 
     IDENTICAL classification logic to original implementation.
     """
-    df = pd.DataFrame(columns=["res_id1", "res_id2", "distance", "vector", "type"])
+    rows_list = []  # Accumulate rows in a list
     resids = [site.resid for site in sites]
 
     for i in range(len(resids)):
@@ -151,18 +151,17 @@ def _pairwise_df(sites: List[Site]) -> pd.DataFrame:
             else:
                 types = "unknown"
 
-            new_row = pd.DataFrame(
-                [
-                    {
-                        "res_id1": site1.resid,
-                        "res_id2": site2.resid,
-                        "distance": dist,
-                        "vector": vector,
-                        "type": types,
-                    }
-                ]
-            )
-            df = pd.concat([df, new_row], ignore_index=True)
+            # ← CHANGED: Append dict to list instead of DataFrame concat
+            rows_list.append({
+                "res_id1": site1.resid,
+                "res_id2": site2.resid,
+                "distance": dist,
+                "vector": vector,
+                "type": types,
+            })
+
+    # Single concat at the end
+    df = pd.DataFrame(rows_list)
 
     logger.debug("len dist_vectors: %d", len(df))
     return df
