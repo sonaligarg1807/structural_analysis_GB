@@ -15,7 +15,7 @@ User typically runs:
       --out-dir b45_gb_workflow_out \\
       --resname PEN \\
       --step3-mode multi \\
-      --do-latvecs --do-contactplanes
+      --do-latvecs --do-contactplanes --do-misori
 """
 from __future__ import annotations
 
@@ -189,7 +189,7 @@ def run(args=None):
                 try:
                     analyze_grain_latvecs(
                         g1_path,
-                        output_txt=None,  # default: <stem>_output.txt in same dir
+                        output_txt=None,  # default: <stem>_latvecs.txt in same dir
                         visualize=args.latvecs_visualize,
                         lam=args.latvecs_lam,
                         eps=args.latvecs_eps,
@@ -219,7 +219,7 @@ def run(args=None):
                     cp1, cp2 = contactplanes_for_group(
                         g1_gro_file=g1_path,
                         g2_gro_file=g2_path,
-                        g1_txt=None,  # use <stem>_output.txt by default
+                        g1_txt=None,  # use <stem>_latvecs.txt by default
                         g2_txt=None,
                     )
                     if cp1 is not None and cp2 is not None:
@@ -232,13 +232,18 @@ def run(args=None):
                                 miso = misorientation_for_group(
                                     g1_gro_file=g1_path,
                                     g2_gro_file=g2_path,
-                                    g1_txt=None,  # use <stem>_output.txt by default
+                                    g1_txt=None,  # use <stem>_latvecs.txt by default
                                     g2_txt=None,
                                     symmetry_name=args.misori_symmetry,
                                 )
                                 r["misori_deg"] = miso["theta_deg"]
                                 r["twist_deg"] = miso["twist_deg"]
                                 r["tilt_deg"] = miso["tilt_deg"]
+                                # NEW: Store axis alignment information
+                                r["axis_gb_normal_angle"] = miso["axis_gb_normal_angle"]
+                                r["axis_g1_align"] = f"{miso['axis_g1_closest']}" if miso['axis_g1_closest'] else "NA"
+                                r["axis_g2_align"] = f"{miso['axis_g2_closest']}" if miso['axis_g2_closest'] else "NA"
+                                r["dominant_type"] = miso["dominant_type"]
                             except Exception as e_m:
                                 logger.warning(
                                     "[misori] Warning: failed for %s, %s: %s", g1_path, g2_path, e_m
@@ -248,6 +253,10 @@ def run(args=None):
                         r.setdefault("misori_deg", None)
                         r.setdefault("twist_deg", None)
                         r.setdefault("tilt_deg", None)
+                        r.setdefault("axis_gb_normal_angle", None)
+                        r.setdefault("axis_g1_align", "NA")
+                        r.setdefault("axis_g2_align", "NA")
+                        r.setdefault("dominant_type", "NA")
 
                 except Exception as e:
                     logger.warning(
@@ -256,6 +265,10 @@ def run(args=None):
                     r.setdefault("misori_deg", None)
                     r.setdefault("twist_deg", None)
                     r.setdefault("tilt_deg", None)
+                    r.setdefault("axis_gb_normal_angle", None)
+                    r.setdefault("axis_g1_align", "NA")
+                    r.setdefault("axis_g2_align", "NA")
+                    r.setdefault("dominant_type", "NA")
 
     # ---------- Final summary (after Step 4 so contact_plane is updated) ----------
     final_rows.sort(key=lambda d: (d["dist_to_box_center_A"], d["slab_rank"]))
@@ -277,6 +290,10 @@ def run(args=None):
                 "misori_deg",
                 "twist_deg",
                 "tilt_deg",
+                "axis_gb_normal_angle",  # NEW
+                "axis_g1_align",         # NEW
+                "axis_g2_align",         # NEW
+                "dominant_type",         # NEW
             ]
         )
 
@@ -287,6 +304,11 @@ def run(args=None):
                 return f"{float(x):.2f}"
             except Exception:
                 return "NA"
+        
+        def _fmt_str_or_na(x):
+            if x is None:
+                return "NA"
+            return str(x)
 
         with open(final_path, "w") as f:
             f.write(header + "\n")
@@ -294,6 +316,10 @@ def run(args=None):
                 misori = r.get("misori_deg", None)
                 twist = r.get("twist_deg", None)
                 tilt = r.get("tilt_deg", None)
+                axis_gb_angle = r.get("axis_gb_normal_angle", None)
+                axis_g1 = r.get("axis_g1_align", "NA")
+                axis_g2 = r.get("axis_g2_align", "NA")
+                dom_type = r.get("dominant_type", "NA")
 
                 f.write(
                     f"{r['slab_rank']}\t"
@@ -308,7 +334,11 @@ def run(args=None):
                     f"{r['contact_plane']}\t"
                     f"{_fmt_float_or_na(misori)}\t"
                     f"{_fmt_float_or_na(twist)}\t"
-                    f"{_fmt_float_or_na(tilt)}\n"
+                    f"{_fmt_float_or_na(tilt)}\t"
+                    f"{_fmt_float_or_na(axis_gb_angle)}\t"
+                    f"{_fmt_str_or_na(axis_g1)}\t"
+                    f"{_fmt_str_or_na(axis_g2)}\t"
+                    f"{_fmt_str_or_na(dom_type)}\n"
                 )
 
         logger.info("Final summary (Step 1–4) → %s", final_path)
