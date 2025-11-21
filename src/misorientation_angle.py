@@ -179,7 +179,7 @@ def calculate_axis_gb_normal_angle(misori_axis: np.ndarray, gb_normal: np.ndarra
 
 def classify_gb_type(twist_deg: float, tilt_deg: float, theta_deg: float, 
                      axis_gb_angle: Optional[float] = None,
-                     twist_threshold: float = 15.0,
+                     twist_threshold: float = 20.0,
                      tilt_threshold: float = 75.0) -> str:
     """
     Classify grain boundary as twist-dominated, tilt-dominated, or mixed.
