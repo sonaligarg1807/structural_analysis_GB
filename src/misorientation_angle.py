@@ -6,6 +6,9 @@ lattice vectors (ff/ef) used for contact-plane analysis.
 This refactored version preserves the original algorithms and public API,
 but is import-safe, uses structured logging and includes concise type hints
 and docstrings. No algorithmic logic was changed.
+
+ENHANCED: Now includes misorientation axis alignment analysis with grain axes
+and GB normal, plus twist/tilt dominance classification.
 """
 from __future__ import annotations
 
@@ -106,6 +109,148 @@ def _axis_to_array(ax) -> np.ndarray:
     return np.atleast_2d(arr)
 
 
+def find_closest_axis(misori_axis: np.ndarray, a: np.ndarray, b: np.ndarray, c: np.ndarray) -> Tuple[str, float]:
+    """
+    Find which crystallographic axis (a, b, or c) is most aligned with the misorientation axis.
+    
+    Parameters
+    ----------
+    misori_axis : np.ndarray
+        Unit vector representing the misorientation axis
+    a, b, c : np.ndarray
+        Unit vectors representing the grain's crystallographic axes
+    
+    Returns
+    -------
+    closest_axis : str
+        Name of the closest axis ('a', 'b', or 'c')
+    angle_deg : float
+        Angle in degrees between misorientation axis and the closest axis
+    """
+    misori_axis = unit(misori_axis)
+    
+    # Calculate absolute dot products (we don't care about sign, just alignment)
+    dot_a = abs(np.dot(misori_axis, unit(a)))
+    dot_b = abs(np.dot(misori_axis, unit(b)))
+    dot_c = abs(np.dot(misori_axis, unit(c)))
+    
+    dots = {'a': dot_a, 'b': dot_b, 'c': dot_c}
+    closest = max(dots, key=dots.get)
+    
+    # Convert to angle (clip to handle numerical errors)
+    angle_deg = np.degrees(np.arccos(np.clip(dots[closest], -1.0, 1.0)))
+    
+    logger.debug("[misori] Axis alignment: a=%.2f°, b=%.2f°, c=%.2f° → closest: %s", 
+                 np.degrees(np.arccos(np.clip(dot_a, -1, 1))),
+                 np.degrees(np.arccos(np.clip(dot_b, -1, 1))),
+                 np.degrees(np.arccos(np.clip(dot_c, -1, 1))),
+                 closest)
+    
+    return closest, float(angle_deg)
+
+
+def calculate_axis_gb_normal_angle(misori_axis: np.ndarray, gb_normal: np.ndarray) -> float:
+    """
+    Calculate the angle between the misorientation axis and GB normal.
+    
+    Parameters
+    ----------
+    misori_axis : np.ndarray
+        Unit vector representing the misorientation axis
+    gb_normal : np.ndarray
+        Unit vector representing the GB normal (contact vector)
+    
+    Returns
+    -------
+    angle_deg : float
+        Angle in degrees between the two vectors (always between 0 and 90 degrees)
+    """
+    misori_axis = unit(misori_axis)
+    gb_normal = unit(gb_normal)
+    
+    # Use absolute value to get angle in [0, 90] range
+    dot_product = abs(np.dot(misori_axis, gb_normal))
+    angle_deg = np.degrees(np.arccos(np.clip(dot_product, -1.0, 1.0)))
+    
+    logger.debug("[misori] Misori axis - GB normal angle: %.2f°", angle_deg)
+    
+    return float(angle_deg)
+
+
+def classify_gb_type(twist_deg: float, tilt_deg: float, theta_deg: float, 
+                     axis_gb_angle: Optional[float] = None,
+                     twist_threshold: float = 15.0,
+                     tilt_threshold: float = 75.0) -> str:
+    """
+    Classify grain boundary as twist-dominated, tilt-dominated, or mixed.
+    
+    Parameters
+    ----------
+    twist_deg : float
+        Twist component of misorientation (degrees)
+    tilt_deg : float
+        Tilt component of misorientation (degrees)
+    theta_deg : float
+        Total misorientation angle (degrees)
+    axis_gb_angle : Optional[float]
+        Angle between misorientation axis and GB normal (degrees).
+        If provided, used as primary criterion.
+    twist_threshold : float
+        If axis_gb_angle < this, classify as twist (default: 15°)
+    tilt_threshold : float
+        If axis_gb_angle > this, classify as tilt (default: 75°)
+    
+    Returns
+    -------
+    gb_type : str
+        One of: 'twist', 'tilt', 'mixed', or 'NA'
+    
+    Notes
+    -----
+    Classification logic:
+    1. If axis_gb_angle is available:
+       - < 15° → twist-dominated (rotation axis parallel to GB normal)
+       - > 75° → tilt-dominated (rotation axis perpendicular to GB normal)
+       - else → mixed
+    2. If axis_gb_angle is None, use twist/tilt ratio:
+       - twist/theta > 0.8 → twist
+       - tilt/theta > 0.8 → tilt
+       - else → mixed
+    """
+    # Handle negligible misorientation
+    if theta_deg < 0.1:
+        return 'NA'
+    
+    # Primary classification: use axis-GB normal alignment if available
+    if axis_gb_angle is not None:
+        if axis_gb_angle < twist_threshold:
+            classification = 'twist'
+            logger.debug("[misori] Classification: twist (axis || GB normal, angle=%.2f°)", axis_gb_angle)
+        elif axis_gb_angle > tilt_threshold:
+            classification = 'tilt'
+            logger.debug("[misori] Classification: tilt (axis ⊥ GB normal, angle=%.2f°)", axis_gb_angle)
+        else:
+            classification = 'mixed'
+            logger.debug("[misori] Classification: mixed (axis-GB angle=%.2f°)", axis_gb_angle)
+    else:
+        # Fallback: use twist/tilt component ratio
+        twist_fraction = twist_deg / theta_deg if theta_deg > 0 else 0
+        tilt_fraction = tilt_deg / theta_deg if theta_deg > 0 else 0
+        
+        if twist_fraction > 0.8:
+            classification = 'twist'
+            logger.debug("[misori] Classification: twist (twist/total=%.2f)", twist_fraction)
+        elif tilt_fraction > 0.8:
+            classification = 'tilt'
+            logger.debug("[misori] Classification: tilt (tilt/total=%.2f)", tilt_fraction)
+        else:
+            classification = 'mixed'
+            logger.debug("[misori] Classification: mixed (twist=%.2f, tilt=%.2f)", 
+                        twist_fraction, tilt_fraction)
+    
+    return classification
+
+
 def calculate_misorientation_orix(
     gA: np.ndarray,
     gB: np.ndarray,
@@ -177,7 +322,7 @@ def misorientation_from_frames(
     gB: np.ndarray,
     gb_normal: Optional[np.ndarray] = None,
     symmetry_name: str = "triclinic",
-) -> Dict[str, Optional[float | np.ndarray]]:
+) -> Dict[str, Optional[float | np.ndarray | str]]:
     """
     Compute misorientation between two grain frames using orix, and optionally
     decompose into twist/tilt relative to the GB normal.
@@ -187,7 +332,8 @@ def misorientation_from_frames(
     gA, gB : 3x3 arrays
         Grain frames (columns = a,b,c) in lab coordinates.
     gb_normal : optional 3-vector
-        GB plane normal in lab coords. If provided, compute twist/tilt decomposition.
+        GB plane normal in lab coords. If provided, compute twist/tilt decomposition
+        and axis alignment analysis.
     symmetry_name : str
         Symmetry label for orix.
 
@@ -195,6 +341,10 @@ def misorientation_from_frames(
     -------
     dict with keys:
       - "theta_deg", "axis", "twist_deg", "tilt_deg", "method"
+      - "axis_gb_normal_angle" (if gb_normal provided)
+      - "axis_g1_closest", "axis_g1_angle" (if gb_normal provided)
+      - "axis_g2_closest", "axis_g2_angle" (if gb_normal provided)
+      - "dominant_type" (if gb_normal provided)
     """
     angle_deg, R_delta, axis = calculate_misorientation_orix(
         gA, gB, symmetry_name=symmetry_name
@@ -207,16 +357,51 @@ def misorientation_from_frames(
             "twist_deg": None,
             "tilt_deg": None,
             "method": "none",
+            "axis_gb_normal_angle": None,
+            "axis_g1_closest": None,
+            "axis_g1_angle": None,
+            "axis_g2_closest": None,
+            "axis_g2_angle": None,
+            "dominant_type": "NA",
         }
+
+    # Basic twist/tilt decomposition
+    twist_deg = None
+    tilt_deg = None
+    axis_gb_angle = None
+    axis_g1_closest = None
+    axis_g1_angle = None
+    axis_g2_closest = None
+    axis_g2_angle = None
+    dominant_type = "NA"
 
     if gb_normal is not None:
         gbn = unit(gb_normal)
+        
+        # Twist/tilt decomposition
         twist_deg = abs(float(np.dot(axis, gbn))) * angle_deg
         tilt_sq = max(angle_deg**2 - twist_deg**2, 0.0)
         tilt_deg = float(np.sqrt(tilt_sq))
-    else:
-        twist_deg = None
-        tilt_deg = None
+        
+        # NEW: Misorientation axis - GB normal alignment
+        axis_gb_angle = calculate_axis_gb_normal_angle(axis, gb_normal)
+        
+        # NEW: Find closest grain axes
+        # Extract grain axes from frames (columns of gA and gB)
+        a1, b1, c1 = gA[:, 0], gA[:, 1], gA[:, 2]
+        a2, b2, c2 = gB[:, 0], gB[:, 1], gB[:, 2]
+        
+        axis_g1_closest, axis_g1_angle = find_closest_axis(axis, a1, b1, c1)
+        axis_g2_closest, axis_g2_angle = find_closest_axis(axis, a2, b2, c2)
+        
+        # NEW: Classify GB type
+        dominant_type = classify_gb_type(twist_deg, tilt_deg, angle_deg, axis_gb_angle)
+        
+        logger.info(
+            "[misori] Axis alignments: GB_normal=%.2f°, g1_%s=%.2f°, g2_%s=%.2f° → %s",
+            axis_gb_angle, axis_g1_closest, axis_g1_angle, 
+            axis_g2_closest, axis_g2_angle, dominant_type
+        )
 
     return {
         "theta_deg": float(angle_deg),
@@ -224,6 +409,12 @@ def misorientation_from_frames(
         "twist_deg": twist_deg,
         "tilt_deg": tilt_deg,
         "method": "orix",
+        "axis_gb_normal_angle": axis_gb_angle,
+        "axis_g1_closest": axis_g1_closest,
+        "axis_g1_angle": axis_g1_angle,
+        "axis_g2_closest": axis_g2_closest,
+        "axis_g2_angle": axis_g2_angle,
+        "dominant_type": dominant_type,
     }
 
 
@@ -233,7 +424,7 @@ def misorientation_for_group(
     g1_txt: Optional[str | Path] = None,
     g2_txt: Optional[str | Path] = None,
     symmetry_name: str = "triclinic",
-) -> Dict[str, Optional[float | np.ndarray]]:
+) -> Dict[str, Optional[float | np.ndarray | str]]:
     """
     High-level convenience wrapper for the GB pipeline.
 
@@ -264,6 +455,12 @@ def misorientation_for_group(
             "twist_deg": None,
             "tilt_deg": None,
             "method": "none",
+            "axis_gb_normal_angle": None,
+            "axis_g1_closest": None,
+            "axis_g1_angle": None,
+            "axis_g2_closest": None,
+            "axis_g2_angle": None,
+            "dominant_type": "NA",
         }
     gb_normal = _normalize_vec(conn_vec)
 
@@ -279,11 +476,18 @@ def misorientation_for_group(
             "twist_deg": None,
             "tilt_deg": None,
             "method": "none",
+            "axis_gb_normal_angle": None,
+            "axis_g1_closest": None,
+            "axis_g1_angle": None,
+            "axis_g2_closest": None,
+            "axis_g2_angle": None,
+            "dominant_type": "NA",
         }
 
     # Assign a,b,c for each grain and build frames: columns = (a, b, c)
     a1, b1, c1 = assign_abc(ff1, ef1)
     a2, b2, c2 = assign_abc(ff2, ef2)
+
     g1_frame = np.column_stack([a1, b1, c1])
     g2_frame = np.column_stack([a2, b2, c2])
 
@@ -297,10 +501,11 @@ def misorientation_for_group(
 
     if miso["theta_deg"] is not None:
         logger.info(
-            "[misori] Θ = %.2f°, twist = %s, tilt = %s",
+            "[misori] Θ = %.2f°, twist = %.2f°, tilt = %.2f°, type = %s",
             miso["theta_deg"],
-            miso["twist_deg"],
-            miso["tilt_deg"],
+            miso["twist_deg"] if miso["twist_deg"] is not None else 0.0,
+            miso["tilt_deg"] if miso["tilt_deg"] is not None else 0.0,
+            miso["dominant_type"],
         )
     else:
         logger.info("[misori] Misorientation not computed (orix missing or input issue).")
