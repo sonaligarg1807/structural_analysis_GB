@@ -162,7 +162,7 @@ def run(args=None):
 
         # add slab rank from stem if present
         for r in rows:
-            m = re.search(r"slab(\d+)", r["slab_stem"])
+            m = re.search(r"slab_(\d+)", r["slab_stem"])
             r["slab_rank"] = int(m.group(1)) if m else -1
         final_rows.extend(rows)
 
