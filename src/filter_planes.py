@@ -194,6 +194,8 @@ def filter_best_per_rank(
         "G2_N",
         "contact_plane",
         "misori_deg",
+        "twist_deg",
+        "tilt_deg",
     }
     missing = needed - set(rows[0].keys())
     if missing:
@@ -242,6 +244,8 @@ def filter_best_per_rank(
         "G2_N",
         "contact_plane",
         "misori_deg",
+        "twist_deg",
+        "tilt_deg",
     ]
     with out_path.open("w", newline="") as f:
         w = csv.DictWriter(f, delimiter="\t", fieldnames=out_cols)
