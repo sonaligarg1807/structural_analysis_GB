@@ -133,6 +133,7 @@ def run(args=None):
                 write_txt=args.write_step3_txt,
                 write_gro=args.write_step3_gro,
                 min_count_write=args.min_count_to_write,
+                slab_axis=args.slab_axis,   # added slab_axis argument
             )
         else:
             rows = step3_single_layer_for_slab(
@@ -158,6 +159,7 @@ def run(args=None):
                 target_per_side=(
                     args.target_per_side if args.target_per_side > 0 else None
                 ),
+                slab_axis=args.slab_axis,   # added slab_axis argument
             )
 
         # add slab rank from stem if present

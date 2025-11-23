@@ -23,7 +23,7 @@ The `structural_analysis_GB` package implements a multi-step workflow for grain 
 1. **Step 1**: Extract multiple slabs from a full-system structure
 2. **Step 2**: Classify residues/molecules into grains and grain boundaries
 3. **Step 3**: Select representative layers and output grain/GB segments
-4. **Step 4** (Optional): Advanced analysis including lattice vectors, contact planes, and misorientation angles
+4. **Step 4** (Optional): Advanced analysis including lattice vectors, contact planes, misorientation angles and filtering out the desired planes
 
 ## Features
 
@@ -92,7 +92,11 @@ python -m main \
     --input-gro your_structure.gro \
     --resname PEN \
     --out-dir output_results \
-    --step3-mode single
+    --step3-mode single \
+    --gb-axis y \
+    --latvecs --contactplanes --misori --filter-planes \
+    --filter_plane_pair ac-ac \
+    --filter_out_name ac-ac_best.txt 
 ```
 
 This will:

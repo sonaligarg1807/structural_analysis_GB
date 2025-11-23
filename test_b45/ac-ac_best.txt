@@ -1,6 +1,0 @@
-slab_rank	slab_dir	slab_stem	GB_AXIS	y_center_A	dist_to_box_center_A	GB_N	G1_N	G2_N	contact_plane	misori_deg	twist_deg	tilt_deg
-1	slab_01	slab_01	y	67.57	14.26	107	72	157	g1=ac,g2=ac	40.03	38.41	11.27
-4	slab_04	slab_04	y	122.38	40.55	66	75	64	g1=ac,g2=ac	44.14	43.54	7.27
-7	slab_07	slab_07	y	79.4	2.43	175	71	145	g1=ac,g2=ac	50.32	6.57	49.89
-8	slab_08	slab_08	y	66.24	15.59	61	70	48	g1=ac,g2=ac	173.19	31.45	170.31
-11	slab_11	slab_11	y	142.46	60.63	116	70	16	g1=ac,g2=ac	48.60	31.08	37.36

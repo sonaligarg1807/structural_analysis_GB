@@ -93,6 +93,16 @@ def build_parser() -> argparse.ArgumentParser:
         default="y",
         help="Axis along which GB is oriented (default: y)",
     )
+    
+    #added extra slab_axis
+    p.add_argument(
+        "--slab-axis",
+        dest="slab_axis",
+        choices=["x", "y", "z"],
+        default="z",
+        help="Cartesian axis perpendicular to the slab (x, y, or z)"
+    )
+    
     p.add_argument("--a-len", type=float, default=6.2753, help="Unit-cell length a (Å)")
     p.add_argument("--b-len", type=float, default=7.7138, help="Unit-cell length b (Å)")
     p.add_argument("--c-len", type=float, default=14.4424, help="Unit-cell length c (Å)")
@@ -135,7 +145,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--target-per-side",
         type=int,
-        default=300,
+        default=200,
         help="Cap per-grain count in single-layer mode (0 to disable capping)",
     )
 
