@@ -86,22 +86,22 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     # ---- Step 3 config ----
-    p.add_argument(
-        "--gb-axis",
-        dest="gb_axis",
-        choices=["x", "y", "z"],
-        default="y",
-        help="Axis along which GB is oriented (default: y)",
-    )
+    # p.add_argument(
+    #     "--gb-axis",
+    #     dest="gb_axis",
+    #     choices=["x", "y", "z"],
+    #     default="y",
+    #     help="Axis along which GB is oriented (default: y)",
+    # )
     
     #added extra slab_axis
-    p.add_argument(
-        "--slab-axis",
-        dest="slab_axis",
-        choices=["x", "y", "z"],
-        default="z",
-        help="Cartesian axis perpendicular to the slab (x, y, or z)"
-    )
+    # p.add_argument(
+    #     "--slab-axis",
+    #     dest="slab_axis",
+    #     choices=["x", "y", "z"],
+    #     default="z",
+    #     help="Cartesian axis perpendicular to the slab (x, y, or z)"
+    # )
     
     p.add_argument("--a-len", type=float, default=6.2753, help="Unit-cell length a (Å)")
     p.add_argument("--b-len", type=float, default=7.7138, help="Unit-cell length b (Å)")
@@ -130,12 +130,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     # thresholds
-    p.add_argument(
-        "--min-count-to-write",
-        type=int,
-        default=40,
-        help="Min GB/G1/G2 count to write merged GRO/TXT in multi-layer mode",
-    )
+    # p.add_argument(
+    #     "--min-count-to-write",
+    #     type=int,
+    #     default=40,
+    #     help="Min GB/G1/G2 count to write merged GRO/TXT in multi-layer mode",
+    # )
     p.add_argument(
         "--min-gb-to-write",
         type=int,
