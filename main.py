@@ -140,7 +140,6 @@ def run(args=None):
                 slab_gro=slab,
                 slab_dir=slab_dir,
                 step2_out=step2_out,
-                gb_axis=args.gb_axis,
                 a_len=args.a_len,
                 b_len=args.b_len,
                 c_len=args.c_len,
@@ -154,12 +153,10 @@ def run(args=None):
                 connect_radius_layer=args.connect_radius_3,
                 write_txt=args.write_step3_txt,
                 write_gro=args.write_step3_gro,
-                min_count_write=args.min_count_to_write,
                 min_gb_to_write=args.min_gb_to_write,
                 target_per_side=(
                     args.target_per_side if args.target_per_side > 0 else None
-                ),
-                slab_axis=args.slab_axis,   # added slab_axis argument
+                )
             )
 
         # add slab rank from stem if present
@@ -182,6 +179,7 @@ def run(args=None):
 
             g1_path = paths.get("g1")
             g2_path = paths.get("g2")
+            gb_path = paths.get("gb")
             if not (g1_path and g2_path):
                 continue
 
@@ -237,14 +235,15 @@ def run(args=None):
                                     g1_txt=None,  # use <stem>_latvecs.txt by default
                                     g2_txt=None,
                                     symmetry_name=args.misori_symmetry,
+                                    gb_gro_file=gb_gro_file,   # <--- NEW: pass the segment's GB.gro
                                 )
                                 r["misori_deg"] = miso["theta_deg"]
                                 r["twist_deg"] = miso["twist_deg"]
                                 r["tilt_deg"] = miso["tilt_deg"]
                                 # NEW: Store axis alignment information
                                 r["axis_gb_normal_angle"] = miso["axis_gb_normal_angle"]
-                                r["axis_g1_align"] = f"{miso['axis_g1_closest']}" if miso['axis_g1_closest'] else "NA"
-                                r["axis_g2_align"] = f"{miso['axis_g2_closest']}" if miso['axis_g2_closest'] else "NA"
+                                r["axis_g1_align"] = miso['axis_g1_closest'] if miso['axis_g1_closest'] else "NA"
+                                r["axis_g2_align"] = miso['axis_g2_closest'] if miso['axis_g2_closest'] else "NA"
                                 r["dominant_type"] = miso["dominant_type"]
                             except Exception as e_m:
                                 logger.warning(
