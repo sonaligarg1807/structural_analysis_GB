@@ -67,6 +67,7 @@ def run(args=None):
         dbscan_min_samples=args.dbscan_min_samples,
         select_by=args.select_by,
         unwrap=args.unwrap,
+        orient_mode=args.orient_mode,  # NEW: pass the orientation mode
         write_summary=args.write_step1_summary,
     )
 
@@ -87,6 +88,7 @@ def run(args=None):
             opp_min_nb=args.opp_min_nb,
             edge_dilate_steps=args.edge_dilate_steps,
             min_gb_size=args.min_gb_size,
+            orient_mode=args.orient_mode_step2,  # NEW: pass Step 2 orientation mode
         )
 
         # --- Step-3 mode selection ---
@@ -235,7 +237,7 @@ def run(args=None):
                                     g1_txt=None,  # use <stem>_latvecs.txt by default
                                     g2_txt=None,
                                     symmetry_name=args.misori_symmetry,
-                                    gb_gro_file=gb_gro_file,   # <--- NEW: pass the segment's GB.gro
+                                    gb_gro_file=gb_path,   # <--- NEW: pass the segment's GB.gro
                                 )
                                 r["misori_deg"] = miso["theta_deg"]
                                 r["twist_deg"] = miso["twist_deg"]
