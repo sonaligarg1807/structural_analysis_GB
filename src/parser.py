@@ -50,6 +50,20 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--smooth-iters", type=int, default=3, help="Number of smoothing iterations (Step 1)")
     p.add_argument("--dbscan-eps", type=float, default=10.0, help="DBSCAN eps for GB clustering (Å)")
     p.add_argument("--dbscan-min-samples", type=int, default=6, help="DBSCAN min_samples for GB clustering")
+    # NEW: Orientation mode for PCA
+    p.add_argument(
+        "--orient-mode",
+        dest="orient_mode",
+        choices=["long", "short", "small", "normal", "short_plus_normal", "small_plus_normal"],
+        default="normal",
+        help=(
+            "Which PCA axis to use for grain detection: "
+            "'long' (largest variance), 'short'/'small' (intermediate), "
+            "'normal' (smallest variance - plane normal), "
+            "'short_plus_normal'/'small_plus_normal' (sum of intermediate + normal). "
+            "Default: 'normal' (original behavior)"
+        ),
+    )
     p.add_argument(
         "--select-by",
         choices=["resid", "atom"],
@@ -78,6 +92,23 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--opp-min-nb", type=int, default=2, help="Min neighbors from opposite grain to mark boundary")
     p.add_argument("--edge-dilate-steps", type=int, default=1, help="GB dilatation steps")
     p.add_argument("--min-gb-size", type=int, default=0, help="Minimum GB component size to keep")
+    # NEW: Orientation mode for Step 2 (grain/GB segmentation)
+    p.add_argument(
+        "--orient-mode-step2",
+        dest="orient_mode_step2",
+        choices=["gyration_long", "long", "short", "small", "normal", "short_plus_normal", "small_plus_normal"],
+        default="gyration_long",
+        help=(
+            "Orientation vector for grain/GB segmentation in Step 2: "
+            "'gyration_long' (original - radius of gyration), "
+            "'long' (mwPCA largest variance), "
+            "'short'/'small' (mwPCA intermediate variance), "
+            "'normal' (mwPCA smallest variance - plane normal), "
+            "'short_plus_normal'/'small_plus_normal' (sum of intermediate + normal). "
+            "Default: 'gyration_long' (original behavior)"
+        ),
+    )
+    
     p.add_argument(
         "--out-prefix-per-slab",
         dest="out_prefix_per_slab",
